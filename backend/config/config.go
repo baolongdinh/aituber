@@ -78,7 +78,7 @@ func LoadConfig() (*Config, error) {
 		PexelsAPIKey: getEnv("PEXELS_API_KEY", ""),
 
 		// Rate limiting
-		MaxConcurrentTTSRequests:   getEnvAsInt("MAX_CONCURRENT_TTS_REQUESTS", 3),
+		MaxConcurrentTTSRequests:   getEnvAsInt("MAX_CONCURRENT_TTS_REQUESTS", 1),
 		MaxConcurrentVideoRequests: getEnvAsInt("MAX_CONCURRENT_VIDEO_REQUESTS", 2),
 		RetryDelaySeconds:          getEnvAsInt("RETRY_DELAY_SECONDS", 60),
 	}

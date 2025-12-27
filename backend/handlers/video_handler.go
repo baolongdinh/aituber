@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -86,6 +87,16 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 	}
 	if len(req.Script) > h.cfg.MaxTextLength {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Script too long (max %d chars)", h.cfg.MaxTextLength)})
+		return
+	}
+
+	// Set default speaking speed if not provided
+	if req.SpeakingSpeed == 0 {
+		req.SpeakingSpeed = 1.0
+	}
+	// Validate speaking speed range
+	if req.SpeakingSpeed < 0.5 || req.SpeakingSpeed > 2.0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Speaking speed must be between 0.5 and 2.0"})
 		return
 	}
 
@@ -214,6 +225,7 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 	audioPaths, err := h.audioService.GenerateAudioChunks(
 		audioChunks,
 		req.Voice,
+		req.SpeakingSpeed,
 		jobID,
 		h.cfg.MaxConcurrentTTSRequests,
 	)
@@ -303,6 +315,39 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 	if err := h.composerService.ComposeVideoWithAudio(mergedVideoPath, mergedAudioPath, finalVideoPath); err != nil {
 		h.markJobFailed(jobID, fmt.Errorf("composition failed: %w", err))
 		return
+	}
+
+	// Step 9: Add Intro/Outro if they exist
+	updateStatus("Adding intro/outro", 95)
+
+	// Define paths relative to backend execution directory
+	introPath := "static/intro_video.mp4"
+	outroPath := "static/outro_video.mp4"
+
+	concatList := []string{}
+
+	// Check Intro
+	if _, err := os.Stat(introPath); err == nil {
+		concatList = append(concatList, introPath)
+	}
+
+	// Add Main Video
+	concatList = append(concatList, finalVideoPath)
+
+	// Check Outro
+	if _, err := os.Stat(outroPath); err == nil {
+		concatList = append(concatList, outroPath)
+	}
+
+	// If we have more than just the main video, concat them
+	if len(concatList) > 1 {
+		finalWithIntroOutro := filepath.Join(tempDir, "output", "final_complete.mp4")
+		if err := utils.ConcatVideos(concatList, finalWithIntroOutro); err != nil {
+			h.markJobFailed(jobID, fmt.Errorf("failed to add intro/outro: %w", err))
+			return
+		}
+		// Update final video path
+		finalVideoPath = finalWithIntroOutro
 	}
 
 	// Complete

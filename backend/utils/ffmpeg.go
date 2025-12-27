@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -72,8 +73,16 @@ func MergeAudioWithCrossfade(inputFiles []string, outputFile string, crossfadeDu
 	args := []string{}
 
 	// Add input files
-	for _, file := range inputFiles {
-		args = append(args, "-i", file)
+	for i, file := range inputFiles {
+		if file == "" {
+			return fmt.Errorf("empty input file path at index %d", i)
+		}
+
+		absPath, err := filepath.Abs(file)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path for %s: %w", file, err)
+		}
+		args = append(args, "-i", absPath)
 	}
 
 	// Build filter complex for crossfade
@@ -147,14 +156,27 @@ func MergeVideosWithTransition(inputFiles []string, outputFile string, transitio
 		args = append(args, "-i", file)
 	}
 
-	// Build xfade transitions
+	// Build normalization and xfade transitions
 	filterParts := []string{}
+
+	// 1. Normalize all inputs first (resolution, fps, pixel format, sar)
+	// This prevents "timebase mismatch" and "main timebase" errors in xfade
+	for i := 0; i < len(inputFiles); i++ {
+		// Scale to target resolution, force generic PAR, set FPS, set pixel format
+		// [0:v]scale=1920:1080,setsar=1,fps=30,format=yuv420p[v0norm]
+		normFilter := fmt.Sprintf("[%d:v]scale=%s,setsar=1,fps=%d,format=yuv420p[v%dnorm]",
+			i, resolution, fps, i)
+		filterParts = append(filterParts, normFilter)
+	}
+
+	// 2. Apply xfade transitions
 	offset := 0.0
-	lastLabel := "[0:v]"
+	// Start with the first normalized text
+	lastLabel := "[v0norm]"
 
 	for i := 1; i < len(inputFiles); i++ {
 		offset += durations[i-1] - transitionDuration
-		currentInput := fmt.Sprintf("[%d:v]", i)
+		currentInput := fmt.Sprintf("[v%dnorm]", i)
 		outputLabel := fmt.Sprintf("[v%d]", i)
 
 		if i == len(inputFiles)-1 {
@@ -177,8 +199,6 @@ func MergeVideosWithTransition(inputFiles []string, outputFile string, transitio
 		"-preset", "medium",
 		"-crf", "23",
 		"-r", strconv.Itoa(fps),
-		"-s", resolution,
-		"-pix_fmt", "yuv420p",
 		"-y", outputFile,
 	)
 
@@ -243,6 +263,58 @@ func TrimVideo(inputPath, outputPath string, targetDuration float64) error {
 		"-c", "copy",
 		"-y", outputPath,
 	}
+
+	return RunFFmpegCommand(args)
+}
+
+// ConcatVideos concatenates multiple video files with audio, normalizing them
+func ConcatVideos(inputFiles []string, outputPath string) error {
+	if len(inputFiles) == 0 {
+		return fmt.Errorf("no input files provided")
+	}
+
+	// Build filter complex
+	args := []string{}
+
+	// Add input files
+	for _, file := range inputFiles {
+		args = append(args, "-i", file)
+	}
+
+	// Filter complex for normalization and concat
+	filterParts := []string{}
+
+	for i := 0; i < len(inputFiles); i++ {
+		// Normalize video: scale to 1920x1080, setsar 1, fps 30, format yuv420p
+		// Use force_original_aspect_ratio to keep aspect ratio and pad to fill
+		vNorm := fmt.Sprintf("[%d:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v%d]", i, i)
+		// Normalize audio: sample rate 44100, stereo
+		aNorm := fmt.Sprintf("[%d:a]aformat=sample_rates=44100:channel_layouts=stereo[a%d]", i, i)
+
+		filterParts = append(filterParts, vNorm, aNorm)
+	}
+
+	// Concat part
+	concatFilter := ""
+	for i := 0; i < len(inputFiles); i++ {
+		concatFilter += fmt.Sprintf("[v%d][a%d]", i, i)
+	}
+	concatFilter += fmt.Sprintf("concat=n=%d:v=1:a=1[vout][aout]", len(inputFiles))
+
+	filterParts = append(filterParts, concatFilter)
+	filterComplex := strings.Join(filterParts, ";")
+
+	args = append(args,
+		"-filter_complex", filterComplex,
+		"-map", "[vout]",
+		"-map", "[aout]",
+		"-c:v", "libx264",
+		"-preset", "medium",
+		"-crf", "23",
+		"-c:a", "aac",
+		"-b:a", "192k",
+		"-y", outputPath,
+	)
 
 	return RunFFmpegCommand(args)
 }

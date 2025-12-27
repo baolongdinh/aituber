@@ -23,10 +23,9 @@ func NewTextProcessor(audioChunkSize int, videoSegmentDuration float64) *TextPro
 }
 
 // SplitForAudio splits text into chunks suitable for TTS
-// - Maximum 4500 characters per chunk
-// - Prefers splitting at sentence boundaries (. ! ?)
-// - Doesn't split in the middle of words
-// - Overlaps 50 characters between chunks to maintain context
+// - Maximum characters per chunk defined by AudioChunkSize
+// - Splits strictly at sentence boundaries
+// - No overlap between chunks
 func (tp *TextProcessor) SplitForAudio(text string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -38,40 +37,75 @@ func (tp *TextProcessor) SplitForAudio(text string) []string {
 	}
 
 	chunks := []string{}
-	currentPos := 0
-	textLen := len(text)
+	sentences := tp.splitIntoSentences(text)
 
-	for currentPos < textLen {
-		// Determine chunk end position
-		endPos := currentPos + tp.AudioChunkSize
-		if endPos >= textLen {
-			// Last chunk
-			chunks = append(chunks, text[currentPos:])
-			break
+	currentChunk := ""
+
+	for _, sentence := range sentences {
+		// Calculate potential length if we add this sentence
+		// Add 1 for space if currentChunk is not empty
+		potentialLen := len(currentChunk) + len(sentence)
+		if currentChunk != "" {
+			potentialLen++
 		}
 
-		// Find sentence boundary near endPos
-		splitPos := tp.findSentenceBoundary(text, currentPos, endPos)
-		if splitPos == -1 {
-			// No sentence boundary found, find word boundary
-			splitPos = tp.findWordBoundary(text, endPos)
-		}
-
-		// Extract chunk
-		chunk := strings.TrimSpace(text[currentPos:splitPos])
-		if chunk != "" {
-			chunks = append(chunks, chunk)
-		}
-
-		// Move to next position with overlap
-		overlap := 50
-		if splitPos-overlap > currentPos {
-			currentPos = splitPos - overlap
+		if potentialLen <= tp.AudioChunkSize {
+			// Add to current chunk
+			if currentChunk != "" {
+				currentChunk += " " + sentence
+			} else {
+				currentChunk = sentence
+			}
 		} else {
-			currentPos = splitPos
+			// Current chunk full, save it
+			if currentChunk != "" {
+				chunks = append(chunks, currentChunk)
+			}
+
+			// Start new chunk with current sentence
+			// If single sentence is too long, we must split it by words
+			if len(sentence) > tp.AudioChunkSize {
+				// Handle extremely long sentence
+				longSentenceChunks := tp.splitLongText(sentence, tp.AudioChunkSize)
+				chunks = append(chunks, longSentenceChunks...)
+				currentChunk = ""
+			} else {
+				currentChunk = sentence
+			}
 		}
 	}
 
+	// Add final chunk
+	if currentChunk != "" {
+		chunks = append(chunks, currentChunk)
+	}
+
+	return chunks
+}
+
+// splitLongText splits a text that exceeds chunklimit by word boundaries
+func (tp *TextProcessor) splitLongText(text string, limit int) []string {
+	chunks := []string{}
+	words := strings.Fields(text)
+	current := ""
+
+	for _, word := range words {
+		if len(current)+len(word)+1 > limit {
+			if current != "" {
+				chunks = append(chunks, current)
+			}
+			current = word
+		} else {
+			if current != "" {
+				current += " " + word
+			} else {
+				current = word
+			}
+		}
+	}
+	if current != "" {
+		chunks = append(chunks, current)
+	}
 	return chunks
 }
 
