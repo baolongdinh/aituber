@@ -65,8 +65,8 @@ func LoadConfig() (*Config, error) {
 
 		// Quality settings
 		AudioSampleRate: getEnvAsInt("AUDIO_SAMPLE_RATE", 44100),
-		AudioBitrate:    getEnv("AUDIO_BITRATE", "192k"),
-		VideoBitrate:    getEnv("VIDEO_BITRATE", "5M"),
+		AudioBitrate:    getEnv("AUDIO_BITRATE", "320k"),
+		VideoBitrate:    getEnv("VIDEO_BITRATE", "8M"),
 		VideoResolution: getEnv("VIDEO_RESOLUTION", "1920x1080"),
 		VideoFPS:        getEnvAsInt("VIDEO_FPS", 30),
 

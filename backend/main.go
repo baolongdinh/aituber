@@ -50,6 +50,7 @@ func main() {
 		api.POST("/generate", videoHandler.Generate)
 		api.GET("/status/:job_id", videoHandler.GetStatus)
 		api.GET("/download/:job_id", videoHandler.Download)
+		api.GET("/download-subtitle/:job_id", videoHandler.DownloadSubtitle)
 	}
 
 	// Start server

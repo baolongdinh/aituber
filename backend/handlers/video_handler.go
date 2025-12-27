@@ -160,6 +160,41 @@ func (h *VideoHandler) GetStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// DownloadSubtitle handles GET /api/download-subtitle/:job_id
+func (h *VideoHandler) DownloadSubtitle(c *gin.Context) {
+	jobID := c.Param("job_id")
+
+	h.jobsMux.RLock()
+	job, exists := h.jobs[jobID]
+	h.jobsMux.RUnlock()
+
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		return
+	}
+
+	if job.Status != "completed" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Job not completed yet"})
+		return
+	}
+
+	// Construct path to subtitles.srt
+	// Assuming it's in the same directory as the final video but we need to find the temp dir
+	// Since we don't store temp dir in job status (bad design but let's work around it),
+	// we reconstruct it: tempDir/jobID/output/subtitles.srt
+	// Wait, we need h.cfg.TempDir
+	srtPath := filepath.Join(h.cfg.TempDir, jobID, "output", "subtitles.srt")
+
+	if _, err := os.Stat(srtPath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Subtitle file not found"})
+		return
+	}
+
+	c.Header("Content-Type", "application/x-subrip")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=subtitles_%s.srt", jobID))
+	c.File(srtPath)
+}
+
 // Download handles GET /api/download/:job_id
 func (h *VideoHandler) Download(c *gin.Context) {
 	jobID := c.Param("job_id")
@@ -215,10 +250,10 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 		return
 	}
 
-	// Step 1: Split text for audio
+	// Step 1: Split text for audio (and subtitles)
 	updateStatus("Splitting text for audio generation", 10)
-	audioChunks := h.textProcessor.SplitForAudio(req.Script)
-	log.Printf("[Job %s] Created %d audio chunks", jobID, len(audioChunks))
+	audioChunks := h.textProcessor.SplitForSubtitles(req.Script)
+	log.Printf("[Job %s] Created %d audio chunks (subtitle segments)", jobID, len(audioChunks))
 
 	// Step 2: Generate audio chunks
 	updateStatus(fmt.Sprintf("Generating %d audio chunks", len(audioChunks)), 20)
@@ -232,6 +267,13 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 	if err != nil {
 		h.markJobFailed(jobID, fmt.Errorf("audio generation failed: %w", err))
 		return
+	}
+
+	// Step 2b: Generate Subtitles
+	updateStatus("Generating subtitles", 30)
+	if _, err := h.GenerateSRT(jobID, audioPaths, audioChunks, filepath.Join(tempDir, "output")); err != nil {
+		log.Printf("[Job %s] Failed to generate subtitles: %v", jobID, err)
+		// Don't fail the whole job, just log error
 	}
 
 	// Step 3: Merge audio
@@ -373,4 +415,55 @@ func (h *VideoHandler) markJobFailed(jobID string, err error) {
 		job.UpdatedAt = time.Now()
 	}
 	h.jobsMux.Unlock()
+}
+
+// GenerateSRT generates SRT subtitle file from audio chunks
+func (h *VideoHandler) GenerateSRT(jobID string, audioPaths []string, texts []string, outputDir string) (string, error) {
+	srtPath := filepath.Join(outputDir, "subtitles.srt")
+	file, err := os.Create(srtPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create SRT file: %w", err)
+	}
+	defer file.Close()
+
+	// Calculate initial offset (Intro duration)
+	currentOffset := 0.0
+	introPath := "static/intro_video.mp4"
+	if _, err := os.Stat(introPath); err == nil {
+		duration, err := utils.GetVideoDuration(introPath)
+		if err == nil {
+			currentOffset = duration
+		} else {
+			log.Printf("Failed to get intro duration: %v", err)
+		}
+	}
+
+	for i, audioPath := range audioPaths {
+		if i >= len(texts) {
+			break
+		}
+
+		duration, err := utils.GetAudioDuration(audioPath)
+		if err != nil {
+			return "", fmt.Errorf("failed to get audio duration for %s: %w", audioPath, err)
+		}
+
+		// Account for crossfade overlap for all chunks except the first one
+		if i > 0 {
+			currentOffset -= h.cfg.AudioCrossfadeDuration
+		}
+
+		start := currentOffset
+		end := currentOffset + duration
+		currentOffset += duration
+
+		// Format timestamp: HH:MM:SS,mmm
+		startStr := utils.FormatSRTTimestamp(start)
+		endStr := utils.FormatSRTTimestamp(end)
+
+		// Write to file
+		fmt.Fprintf(file, "%d\n%s --> %s\n%s\n\n", i+1, startStr, endStr, texts[i])
+	}
+
+	return srtPath, nil
 }

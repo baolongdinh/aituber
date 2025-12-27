@@ -11,6 +11,7 @@ type TextProcessor struct {
 	AudioChunkSize       int
 	VideoSegmentDuration float64
 	AvgWordsPerMinute    float64 // Default: 150 words per minute
+	MaxSubtitleLength    int     // Default: 100 chars
 }
 
 // NewTextProcessor creates a new text processor
@@ -19,6 +20,7 @@ func NewTextProcessor(audioChunkSize int, videoSegmentDuration float64) *TextPro
 		AudioChunkSize:       audioChunkSize,
 		VideoSegmentDuration: videoSegmentDuration,
 		AvgWordsPerMinute:    150.0, // Vietnamese average reading speed
+		MaxSubtitleLength:    100,
 	}
 }
 
@@ -78,6 +80,81 @@ func (tp *TextProcessor) SplitForAudio(text string) []string {
 	// Add final chunk
 	if currentChunk != "" {
 		chunks = append(chunks, currentChunk)
+	}
+
+	return chunks
+}
+
+// SplitForSubtitles splits text into chunks where each chunk is one subtitle line and one audio file.
+// Prioritizes readability and sentence boundaries.
+func (tp *TextProcessor) SplitForSubtitles(text string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return []string{}
+	}
+
+	chunks := []string{}
+	sentences := tp.splitIntoSentences(text)
+
+	for _, sentence := range sentences {
+		sentence = strings.TrimSpace(sentence)
+		if len(sentence) <= tp.MaxSubtitleLength {
+			chunks = append(chunks, sentence)
+			continue
+		}
+
+		// Sentence too long, split by clauses (comma, semicolon)
+		subChunks := tp.splitByClauses(sentence, tp.MaxSubtitleLength)
+		chunks = append(chunks, subChunks...)
+	}
+
+	return chunks
+}
+
+// splitByClauses splits a long sentence by punctuation (comma, semicolon) or words if needed
+func (tp *TextProcessor) splitByClauses(text string, limit int) []string {
+	chunks := []string{}
+
+	// Split by comma first
+	parts := strings.FieldsFunc(text, func(r rune) bool {
+		return r == ',' || r == ';'
+	})
+
+	currentMsg := ""
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+
+		// Add comma back if it's not the last part (approximation)
+		suffix := ""
+		if i < len(parts)-1 {
+			suffix = ","
+		}
+
+		if len(currentMsg)+len(part)+len(suffix)+1 <= limit {
+			if currentMsg != "" {
+				currentMsg += " " + part + suffix
+			} else {
+				currentMsg = part + suffix
+			}
+		} else {
+			if currentMsg != "" {
+				chunks = append(chunks, currentMsg)
+			}
+
+			// Check if the part itself is too long
+			if len(part+suffix) > limit {
+				// Split by words
+				wordChunks := tp.splitLongText(part+suffix, limit)
+				chunks = append(chunks, wordChunks...)
+				currentMsg = ""
+			} else {
+				currentMsg = part + suffix
+			}
+		}
+	}
+
+	if currentMsg != "" {
+		chunks = append(chunks, currentMsg)
 	}
 
 	return chunks

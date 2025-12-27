@@ -87,7 +87,6 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 	params.Add("query", keywords)
 	params.Add("per_page", "100") // Get more results to filter
 	params.Add("orientation", "landscape")
-	params.Add("size", "medium")
 
 	req, err := http.NewRequest("GET", baseURL+"?"+params.Encode(), nil)
 	if err != nil {
@@ -122,7 +121,7 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 
 	for _, video := range result.Videos {
 		// Only accept videos between 5-15 seconds (flexible range)
-		if video.Duration >= 5 && video.Duration <= 15 {
+		if video.Duration >= 5 && video.Duration <= 35 {
 			// Find best quality HD link
 			var bestLink string
 			for _, file := range video.VideoFiles {
@@ -163,8 +162,8 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 			break
 		}
 
-		// Limit to max 10 videos to avoid too many downloads
-		if len(selectedURLs) >= 10 {
+		// Limit to max 100 videos to avoid too many downloads
+		if len(selectedURLs) >= 100 {
 			break
 		}
 	}

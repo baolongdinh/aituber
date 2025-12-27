@@ -19,7 +19,7 @@
           <v-col cols="12" md="6">
             <ScriptInput v-model="script" />
             <ConfigPanel v-model="config" />
-            
+
             <v-btn
               block
               size="x-large"
@@ -46,6 +46,7 @@
             <div class="mt-4">
               <ResultPreview
                 :video-url="videoUrl"
+                :job-id="jobId"
                 @reset="handleReset"
               />
             </div>
@@ -57,7 +58,7 @@
     <v-footer app color="grey-lighten-3" class="pa-4">
       <div class="text-center w-100">
         <span class="text-caption">
-          Built with ❤️ for seamless video generation | 
+          Built with ❤️ for seamless video generation |
           <a href="https://github.com" target="_blank">GitHub</a>
         </span>
       </div>
@@ -66,22 +67,22 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import ScriptInput from './components/ScriptInput.vue'
-import ConfigPanel from './components/ConfigPanel.vue'
-import ProgressTracker from './components/ProgressTracker.vue'
-import ResultPreview from './components/ResultPreview.vue'
-import { useVideoGeneration } from './composables/useVideoGeneration'
+import { ref, computed } from "vue";
+import ScriptInput from "./components/ScriptInput.vue";
+import ConfigPanel from "./components/ConfigPanel.vue";
+import ProgressTracker from "./components/ProgressTracker.vue";
+import ResultPreview from "./components/ResultPreview.vue";
+import { useVideoGeneration } from "./composables/useVideoGeneration";
 
 // State
-const script = ref('')
+const script = ref("");
 const config = ref({
-  voice: 'banmai',
+  voice: "banmai",
   speaking_speed: 1.0,
-  video_style: 'modern',
-  video_source: 'ai',
-  stock_keywords: ''
-})
+  video_style: "modern",
+  video_source: "ai",
+  stock_keywords: "",
+});
 
 // Video generation composable
 const {
@@ -91,29 +92,32 @@ const {
   jobStatus,
   videoUrl,
   error,
+  jobId,
   generateVideo,
-  reset
-} = useVideoGeneration()
+  reset,
+} = useVideoGeneration();
 
 // Computed
 const canGenerate = computed(() => {
-  return script.value.length > 0 && script.value.length <= 50000 && !generating.value
-})
+  return (
+    script.value.length > 0 && script.value.length <= 50000 && !generating.value
+  );
+});
 
 // Methods
 const handleGenerate = async () => {
-  await generateVideo(script.value, config.value)
-}
+  await generateVideo(script.value, config.value);
+};
 
 const handleReset = () => {
-  reset()
-  script.value = ''
-}
+  reset();
+  script.value = "";
+};
 </script>
 
 <style>
 /* Global styles */
 .v-application {
-  font-family: 'Roboto', sans-serif;
+  font-family: "Roboto", sans-serif;
 }
 </style>

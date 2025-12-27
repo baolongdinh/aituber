@@ -27,6 +27,18 @@
         </v-btn>
 
         <v-btn
+          v-if="jobId"
+          :href="`/api/download-subtitle/${jobId}`"
+          download
+          color="secondary"
+          variant="outlined"
+          size="large"
+          prepend-icon="mdi-subtitles"
+        >
+          Download Subtitles
+        </v-btn>
+
+        <v-btn
           color="secondary"
           size="large"
           prepend-icon="mdi-refresh"
@@ -64,6 +76,10 @@ import { ref } from 'vue'
 
 defineProps({
   videoUrl: {
+    type: String,
+    default: null
+  },
+  jobId: {
     type: String,
     default: null
   }
