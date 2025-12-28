@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -69,15 +70,53 @@ func MergeAudioWithCrossfade(inputFiles []string, outputFile string, crossfadeDu
 		return RunFFmpegCommand(args)
 	}
 
+	// Handle large number of files by batching to avoid command line length limits
+	// Windows has a limit of ~8191 characters, each path can be ~260. 20 files is safe.
+	const batchSize = 20
+	if len(inputFiles) > batchSize {
+		fmt.Printf("[FFmpeg] Batching %d files into groups of %d\n", len(inputFiles), batchSize)
+
+		var intermediateFiles []string
+		dir := filepath.Dir(outputFile)
+
+		for i := 0; i < len(inputFiles); i += batchSize {
+			end := i + batchSize
+			if end > len(inputFiles) {
+				end = len(inputFiles)
+			}
+
+			batch := inputFiles[i:end]
+			tempOutput := filepath.Join(dir, fmt.Sprintf("temp_batch_%d_%s", i, filepath.Base(outputFile)))
+
+			// Recursively merge this batch
+			if err := MergeAudioWithCrossfade(batch, tempOutput, crossfadeDuration, bitrate); err != nil {
+				return fmt.Errorf("failed to merge batch %d: %w", i, err)
+			}
+			intermediateFiles = append(intermediateFiles, tempOutput)
+		}
+
+		// Final merge of intermediate files
+		err := MergeAudioWithCrossfade(intermediateFiles, outputFile, crossfadeDuration, bitrate)
+
+		// Cleanup intermediate files
+		for _, f := range intermediateFiles {
+			os.Remove(f)
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to merge intermediate files: %w", err)
+		}
+
+		return nil
+	}
+
 	// Multiple files - build complex filter
 	args := []string{}
-
-	// Add input files
+	// Add input files (we already checked for empty files above, but let's be safe)
 	for i, file := range inputFiles {
 		if file == "" {
 			return fmt.Errorf("empty input file path at index %d", i)
 		}
-
 		absPath, err := filepath.Abs(file)
 		if err != nil {
 			return fmt.Errorf("failed to get absolute path for %s: %w", file, err)
