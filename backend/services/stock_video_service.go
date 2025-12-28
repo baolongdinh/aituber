@@ -122,17 +122,41 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 	for _, video := range result.Videos {
 		// Only accept videos between 5-15 seconds (flexible range)
 		if video.Duration >= 5 && video.Duration <= 35 {
-			// Find best quality HD link
+			// Find best quality link (Prioritize 1080p > 16:9 > HD)
 			var bestLink string
+			var bestScore int
+
 			for _, file := range video.VideoFiles {
-				if file.Quality == "hd" && file.Width == 1920 {
-					bestLink = file.Link
-					break
+				currentScore := 0
+
+				// Calculate aspect ratio
+				var aspectRatio float64
+				if file.Height > 0 {
+					aspectRatio = float64(file.Width) / float64(file.Height)
 				}
-			}
-			// Fallback to first available
-			if bestLink == "" && len(video.VideoFiles) > 0 {
-				bestLink = video.VideoFiles[0].Link
+
+				// Check for 16:9 (approx 1.77)
+				is16_9 := aspectRatio > 1.77 && aspectRatio < 1.78
+
+				if file.Width == 1920 && file.Height == 1080 {
+					currentScore = 10000 // Perfect 1080p match
+				} else if is16_9 && file.Width >= 1280 {
+					currentScore = 5000 // 720p+ 16:9
+				} else if is16_9 {
+					currentScore = 1000 // Any 16:9
+				} else if file.Quality == "hd" {
+					currentScore = 500 // Non-16:9 HD
+				} else {
+					currentScore = 1 // Fallback
+				}
+
+				// Add width to score to prefer higher resolution among same category
+				currentScore += file.Width
+
+				if currentScore > bestScore {
+					bestScore = currentScore
+					bestLink = file.Link
+				}
 			}
 
 			if bestLink != "" {
@@ -267,30 +291,44 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 		totalDuration += duration
 	}
 
-	// If total duration is less than target, loop videos to fill the gap
+	// If effective duration (considering transitions) is less than target, loop videos to fill the gap
 	finalInputPaths := inputPaths
-	if totalDuration < targetDuration {
-		fmt.Printf("[Stock Video] Total duration (%.1fs) < target (%.1fs), looping videos...\n", totalDuration, targetDuration)
+	const transitionDuration = 1.0 // Matches the hardcoded value below
+
+	// Effective duration = TotalRawDuration - (Count-1)*TransitionDuration
+	currentRawDuration := totalDuration
+	currentCount := len(finalInputPaths)
+	currentEffective := currentRawDuration - float64(currentCount-1)*transitionDuration
+
+	// Add 5 seconds buffer to target duration to ensure video is always longer than audio
+	// efficiently handling potential FFmpeg timing mismatches or decoding delays
+	safeTargetDuration := targetDuration + 5.0
+
+	if currentEffective < safeTargetDuration {
+		fmt.Printf("[Stock Video] Effective duration (%.1fs) < target (%.1fs), looping videos...\n", currentEffective, safeTargetDuration)
 
 		// Seed random for variety
 		rand.Seed(time.Now().UnixNano())
 
 		// Keep adding random videos until we have enough duration
-		currentDuration := totalDuration
-		for currentDuration < targetDuration*1.2 { // Add 20% buffer
+		for currentEffective < safeTargetDuration {
 			// Pick a truly random video from the downloaded ones
 			randomIdx := rand.Intn(len(inputPaths))
 			finalInputPaths = append(finalInputPaths, inputPaths[randomIdx])
 
 			duration, _ := utils.GetVideoDuration(inputPaths[randomIdx])
-			currentDuration += duration
+			currentRawDuration += duration
+			currentCount++
+
+			// Recalculate effective duration
+			currentEffective = currentRawDuration - float64(currentCount-1)*transitionDuration
 
 			// Limit to avoid infinite loops
-			if len(finalInputPaths) > 50 {
+			if len(finalInputPaths) > 100 {
 				break
 			}
 		}
-		fmt.Printf("[Stock Video] Extended to %d video segments (total ~%.1fs)\n", len(finalInputPaths), currentDuration)
+		fmt.Printf("[Stock Video] Extended to %d video segments (effective ~%.1fs)\n", len(finalInputPaths), currentEffective)
 	}
 
 	// Use FFmpeg's MergeVideosWithTransition utility
@@ -308,6 +346,7 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 		return fmt.Errorf("failed to merge videos: %w", err)
 	}
 
-	// Trim to exact target duration
-	return utils.TrimVideo(mergedPath, outputPath, targetDuration)
+	// Trim to target duration + 2s buffer (let -shortest in next step handle the exact cut)
+	// This prevents video being slightly shorter than audio due to frame boundaries
+	return utils.TrimVideo(mergedPath, outputPath, targetDuration+2.0)
 }

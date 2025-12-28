@@ -26,8 +26,8 @@ func NewTextProcessor(audioChunkSize int, videoSegmentDuration float64) *TextPro
 
 // SplitForAudio splits text into chunks suitable for TTS
 // - Maximum characters per chunk defined by AudioChunkSize
-// - Splits strictly at sentence boundaries
-// - No overlap between chunks
+// - Splits strictly at sentence boundaries where possible
+// - Uses smart splitting for long sentences (punctuation > phrases)
 func (tp *TextProcessor) SplitForAudio(text string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -44,6 +44,12 @@ func (tp *TextProcessor) SplitForAudio(text string) []string {
 	currentChunk := ""
 
 	for _, sentence := range sentences {
+		// Clean sentence
+		sentence = strings.TrimSpace(sentence)
+		if sentence == "" {
+			continue
+		}
+
 		// Calculate potential length if we add this sentence
 		// Add 1 for space if currentChunk is not empty
 		potentialLen := len(currentChunk) + len(sentence)
@@ -65,11 +71,10 @@ func (tp *TextProcessor) SplitForAudio(text string) []string {
 			}
 
 			// Start new chunk with current sentence
-			// If single sentence is too long, we must split it by words
+			// If single sentence is too long, we must split it intelligently
 			if len(sentence) > tp.AudioChunkSize {
-				// Handle extremely long sentence
-				longSentenceChunks := tp.splitLongText(sentence, tp.AudioChunkSize)
-				chunks = append(chunks, longSentenceChunks...)
+				smartChunks := tp.smartSplit(sentence, tp.AudioChunkSize)
+				chunks = append(chunks, smartChunks...)
 				currentChunk = ""
 			} else {
 				currentChunk = sentence
@@ -143,9 +148,10 @@ func (tp *TextProcessor) splitByClauses(text string, limit int) []string {
 
 			// Check if the part itself is too long
 			if len(part+suffix) > limit {
-				// Split by words
-				wordChunks := tp.splitLongText(part+suffix, limit)
-				chunks = append(chunks, wordChunks...)
+				// Split using smartSplit (handling words and other punctuation)
+				// We use smartSplit instead of splitLongText for better results
+				smartChunks := tp.smartSplit(part+suffix, limit)
+				chunks = append(chunks, smartChunks...)
 				currentMsg = ""
 			} else {
 				currentMsg = part + suffix
@@ -160,29 +166,83 @@ func (tp *TextProcessor) splitByClauses(text string, limit int) []string {
 	return chunks
 }
 
-// splitLongText splits a text that exceeds chunklimit by word boundaries
-func (tp *TextProcessor) splitLongText(text string, limit int) []string {
-	chunks := []string{}
-	words := strings.Fields(text)
-	current := ""
+// smartSplit splits a long text intelligently based on punctuation priorities
+func (tp *TextProcessor) smartSplit(text string, limit int) []string {
+	var chunks []string
+	remaining := text
 
-	for _, word := range words {
-		if len(current)+len(word)+1 > limit {
-			if current != "" {
-				chunks = append(chunks, current)
+	for len(remaining) > limit {
+		// Find the best split point within the limit
+		// We look backwards from the limit to find the first suitable split point
+		splitIdx := -1
+
+		// Search range: we want to find a split point roughly between limit/3 and limit
+		// to avoid creating too many tiny chunks, but priority is validity (< limit)
+		searchStart := limit / 3
+		if searchStart < 0 {
+			searchStart = 0
+		}
+
+		// 1. Try splitting at major punctuation (comma, semicolon, colon, etc.)
+		// Priority: ; : , - —
+		punctuations := []string{";", ":", ",", " - ", " — "}
+		bestPuncIdx := -1
+
+		for _, punc := range punctuations {
+			// Find LAST occurrence of this punctuation within limit
+			// We restrict search to the "end region" of the allowed chunk to maximize chunk size
+			limitIdx := limit
+			if limitIdx > len(remaining) {
+				limitIdx = len(remaining)
 			}
-			current = word
-		} else {
-			if current != "" {
-				current += " " + word
-			} else {
-				current = word
+
+			// Extract substring to search in
+			searchArea := remaining[searchStart:limitIdx]
+
+			if idx := strings.LastIndex(searchArea, punc); idx != -1 {
+				// absolute index = searchStart + idx + length of punctuation (to keep punctuation with the first part)
+				actualIdx := searchStart + idx + len(punc)
+
+				// Keep punctuation with the preceding chunk usually, or split after it
+				if actualIdx > bestPuncIdx {
+					bestPuncIdx = actualIdx
+				}
 			}
 		}
+
+		if bestPuncIdx != -1 {
+			splitIdx = bestPuncIdx
+		} else {
+			// 2. Fallback: Split at logical phrase boundaries (spaces)
+			// Find last space before limit
+			limitIdx := limit
+			if limitIdx > len(remaining) {
+				limitIdx = len(remaining)
+			}
+
+			lastSpace := strings.LastIndex(remaining[:limitIdx], " ")
+			if lastSpace != -1 {
+				splitIdx = lastSpace
+			} else {
+				// 3. Last Resort: Hard split at limit
+				splitIdx = limit
+			}
+		}
+
+		// Perform the split
+		chunk := strings.TrimSpace(remaining[:splitIdx])
+		if chunk != "" {
+			chunks = append(chunks, chunk)
+		}
+
+		remaining = strings.TrimSpace(remaining[splitIdx:])
 	}
-	if current != "" {
-		chunks = append(chunks, current)
+
+	// Append the rest
+	if remaining != "" {
+		chunks = append(chunks, remaining)
 	}
+
 	return chunks
 }
 

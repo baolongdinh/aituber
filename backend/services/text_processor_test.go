@@ -38,13 +38,84 @@ func TestSplitForAudio(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			chunks := tp.SplitForAudio(tt.input)
 			if len(chunks) < tt.minChunks || len(chunks) > tt.maxChunks {
-				t.Errorf("Expected %d-%d chunks, got %d", tt.minChunks, tt.maxChunks, len(chunks))
+				t.Errorf("Expected %d-%d chunks, got %d. Chunks: %v", tt.minChunks, tt.maxChunks, len(chunks), chunks)
 			}
 
 			// Verify no chunk exceeds max size
 			for i, chunk := range chunks {
 				if len(chunk) > tp.AudioChunkSize+50 { // Allow overlap
 					t.Errorf("Chunk %d exceeds max size: %d > %d", i, len(chunk), tp.AudioChunkSize)
+				}
+			}
+		})
+	}
+}
+
+func TestSmartSplit(t *testing.T) {
+	// Setup processor with small chunk size to force splits
+	chunkSize := 50
+	tp := NewTextProcessor(chunkSize, 5.5)
+
+	tests := []struct {
+		name     string
+		input    string
+		expected []string // We check if cuts happen at expected punctuation
+	}{
+		{
+			name:  "Split at comma",
+			input: "This is a long sentence, which should be split at the comma.",
+			// Lengths:
+			// "This is a long sentence," -> 24 chars
+			// " which should be split at chunk size." -> ~35 chars
+			// Total ~60 chars. Chunk size 50.
+			// Ideally splits at comma.
+			expected: []string{
+				"This is a long sentence,",
+				"which should be split at the comma.",
+			},
+		},
+		{
+			name:  "Split at semicolon",
+			input: "Here is part one; here is part two which is quite long.",
+			expected: []string{
+				"Here is part one;",
+				"here is part two which is quite long.",
+			},
+		},
+		{
+			name:  "Fallback to space",
+			input: "This is a sentence dealing with no punctuation marks just words words words.",
+			// It should split at a space, not inside a word
+			expected: []string{
+				"This is a sentence dealing with no punctuation",
+				"marks just words words words.",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			chunks := tp.smartSplit(tt.input, chunkSize)
+
+			// Basic verification: Combined text should match input (minus spacing variations if any)
+			// But smartSplit might trim spaces.
+
+			// Check if any chunk exceeds limit significantly
+			// (smartSplit output should be <= limit unless a single word is > limit)
+			for i, chunk := range chunks {
+				if len(chunk) > chunkSize {
+					t.Errorf("Chunk %d exceeds limit %d: %s (len %d)", i, chunkSize, chunk, len(chunk))
+				}
+			}
+
+			// Verify split points for specific cases
+			if len(chunks) != len(tt.expected) {
+				t.Errorf("Expected %d chunks, got %d. Chunks: %v", len(tt.expected), len(chunks), chunks)
+			} else {
+				for i, expected := range tt.expected {
+					if chunks[i] != expected {
+						t.Errorf("Chunk %d mismatch.\nExpected: %s\nGot:      %s", i, expected, chunks[i])
+					}
 				}
 			}
 		})
