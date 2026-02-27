@@ -124,6 +124,25 @@ func MergeAudioWithCrossfade(inputFiles []string, outputFile string, crossfadeDu
 		args = append(args, "-i", absPath)
 	}
 
+	// If crossfade duration is 0 or negative, use simple concat
+	if crossfadeDuration <= 0 {
+		filterParts := ""
+		for i := 0; i < len(inputFiles); i++ {
+			filterParts += fmt.Sprintf("[%d:a]", i)
+		}
+		filterParts += fmt.Sprintf("concat=n=%d:v=0:a=1[aout];[aout]loudnorm[final]", len(inputFiles))
+
+		args = append(args,
+			"-filter_complex", filterParts,
+			"-map", "[final]",
+			"-ar", "44100",
+			"-ab", bitrate,
+			"-y", outputFile,
+		)
+
+		return RunFFmpegCommand(args)
+	}
+
 	// Build filter complex for crossfade
 	filterParts := []string{}
 	lastLabel := "[0:a]"
@@ -306,8 +325,51 @@ func TrimVideo(inputPath, outputPath string, targetDuration float64) error {
 	return RunFFmpegCommand(args)
 }
 
+// ConcatVideosNoAudio concatenates video-only files (no audio stream) into one MP4.
+// Inputs must already be normalized to the same codec/resolution/fps.
+// Used to join per-segment stock clips that were pre-rendered with -an.
+func ConcatVideosNoAudio(inputFiles []string, outputPath string) error {
+	if len(inputFiles) == 0 {
+		return fmt.Errorf("no input files provided")
+	}
+
+	if len(inputFiles) == 1 {
+		// Single segment – just copy
+		args := []string{"-i", inputFiles[0], "-c", "copy", "-y", outputPath}
+		return RunFFmpegCommand(args)
+	}
+
+	// Build a concat list file
+	listPath := outputPath + "_list.txt"
+	f, err := os.Create(listPath)
+	if err != nil {
+		return fmt.Errorf("failed to create concat list: %w", err)
+	}
+	for _, p := range inputFiles {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			f.Close()
+			return fmt.Errorf("failed to resolve path %s: %w", p, err)
+		}
+		f.WriteString(fmt.Sprintf("file '%s'\n", filepath.ToSlash(abs)))
+	}
+	f.Close()
+	defer os.Remove(listPath)
+
+	// Use concat demuxer – fast, no re-encode when codecs match
+	args := []string{
+		"-f", "concat",
+		"-safe", "0",
+		"-i", listPath,
+		"-c", "copy",
+		"-y", outputPath,
+	}
+	return RunFFmpegCommand(args)
+}
+
 // ConcatVideos concatenates multiple video files with audio, normalizing them
 func ConcatVideos(inputFiles []string, outputPath string) error {
+
 	if len(inputFiles) == 0 {
 		return fmt.Errorf("no input files provided")
 	}

@@ -47,11 +47,11 @@
         <div v-if="localConfig.video_source === 'stock'">
           <v-text-field
             v-model="localConfig.stock_keywords"
-            label="Search Keywords (e.g., nature, city)"
-            placeholder="Enter keywords to search for video"
+            label="Visual Style Hint (optional)"
+            placeholder="e.g. cinematic, nature, technology"
             variant="outlined"
-            prepend-inner-icon="mdi-magnify"
-            hint="We will find a video matching these keywords and loop it to match audio duration"
+            prepend-inner-icon="mdi-movie-filter"
+            hint="Added to each segment's keyword search. Leave empty to auto-detect from script."
             persistent-hint
           />
         </div>

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -260,6 +261,91 @@ func TestSplitIntoSentences(t *testing.T) {
 			sentences := tp.splitIntoSentences(tt.input)
 			if len(sentences) != tt.expected {
 				t.Errorf("Expected %d sentences, got %d", tt.expected, len(sentences))
+			}
+		})
+	}
+}
+
+func TestExtractKeywordsFromText(t *testing.T) {
+	tp := NewTextProcessor(4500, 5.5)
+
+	tests := []struct {
+		name      string
+		text      string
+		styleHint string
+		// We verify the result is non-empty and contains at least one expected word
+		mustContain []string
+		mustNotBe   string // result must NOT equal this
+	}{
+		{
+			name:        "Empty text with no hint -> abstract",
+			text:        "",
+			styleHint:   "",
+			mustContain: []string{"abstract"},
+		},
+		{
+			name:        "Empty text with style hint -> hint returned",
+			text:        "",
+			styleHint:   "nature cinematic",
+			mustContain: []string{"nature"},
+		},
+		{
+			name:        "Vietnamese – stop words stripped",
+			text:        "Trí tuệ nhân tạo đang thay đổi thế giới của chúng ta.",
+			styleHint:   "",
+			mustContain: []string{"trí", "tuệ", "nhân", "tạo"}, // meaningful words
+			mustNotBe:   "abstract",
+		},
+		{
+			name:        "English – stop words stripped",
+			text:        "Artificial intelligence is changing the world very fast.",
+			styleHint:   "",
+			mustContain: []string{"artificial", "intelligence", "changing", "world", "fast"},
+			mustNotBe:   "abstract",
+		},
+		{
+			name:        "Style hint appended to content keywords",
+			text:        "Thiên nhiên tươi đẹp cần được bảo vệ.",
+			styleHint:   "cinematic",
+			mustContain: []string{"thiên", "nhiên", "cinematic"},
+		},
+		{
+			name:        "Deduplication – repeated words counted once",
+			text:        "mèo mèo mèo mèo mèo",
+			styleHint:   "",
+			mustContain: []string{"mèo"},
+		},
+		{
+			name:        "All stop words -> abstract fallback",
+			text:        "và hoặc nhưng vì nên thì mà",
+			styleHint:   "",
+			mustContain: []string{"abstract"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tp.ExtractKeywordsFromText(tt.text, tt.styleHint)
+
+			if result == "" {
+				t.Errorf("Result should not be empty")
+			}
+
+			if tt.mustNotBe != "" && result == tt.mustNotBe {
+				t.Errorf("Result should not be %q, got: %q", tt.mustNotBe, result)
+			}
+
+			for _, w := range tt.mustContain {
+				if !strings.Contains(result, w) {
+					t.Errorf("Expected result to contain %q, got: %q", w, result)
+				}
+			}
+
+			// Result should never exceed 5 "content" words + styleHint
+			// (rough check: split by space, content words ≤ 5)
+			parts := strings.Fields(result)
+			if len(parts) > 7 { // 5 content + up to 2 styleHint words is fine
+				t.Errorf("Too many words in result (%d): %q", len(parts), result)
 			}
 		})
 	}

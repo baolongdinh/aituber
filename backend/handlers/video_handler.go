@@ -288,26 +288,84 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 	var mergedVideoPath string
 
 	if req.VideoSource == "stock" {
-		updateStatus("Preparing stock video", 50)
+		updateStatus("Preparing per-segment stock videos", 50)
 
-		// Get audio duration
-		audioDuration, err := utils.GetVideoDuration(mergedAudioPath) // Works for audio too
-		if err != nil {
-			h.markJobFailed(jobID, fmt.Errorf("failed to get audio duration: %w", err))
+		// --- Collect real duration of every audio chunk ---
+		realDurations := make([]float64, len(audioPaths))
+		for i, ap := range audioPaths {
+			d, err := utils.GetAudioDuration(ap)
+			if err != nil {
+				log.Printf("[Job %s] Could not get duration of chunk %d: %v (using estimate 5s)", jobID, i, err)
+				d = 5.0
+			}
+			realDurations[i] = d
+		}
+
+		// --- Extract per-segment keywords from script chunks ---
+		// styleHint comes from the old StockKeywords field (repurposed)
+		styleHint := req.StockKeywords
+		segKeywords := make([]string, len(audioChunks))
+		for i, chunk := range audioChunks {
+			segKeywords[i] = h.textProcessor.ExtractKeywordsFromText(chunk, styleHint)
+			log.Printf("[Job %s] Segment %d keywords: %q", jobID, i, segKeywords[i])
+		}
+
+		// --- Fetch + trim a stock video per segment in parallel (max 3 concurrent) ---
+		segVideoPaths := make([]string, len(audioChunks))
+		segErrors := make([]error, len(audioChunks))
+		sem := make(chan struct{}, 3) // max 3 Pexels calls at the same time
+		var wg sync.WaitGroup
+
+		for i := range audioChunks {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				updateStatus(fmt.Sprintf("Fetching stock video for segment %d/%d", idx+1, len(audioChunks)), 50+idx*30/len(audioChunks))
+
+				vp, err := h.stockVideoService.PrepareSegmentVideo(
+					segKeywords[idx],
+					realDurations[idx],
+					jobID,
+					idx,
+				)
+				if err != nil {
+					segErrors[idx] = err
+					log.Printf("[Job %s] Segment %d video error: %v", jobID, idx, err)
+				} else {
+					segVideoPaths[idx] = vp
+				}
+			}(i)
+		}
+		wg.Wait()
+
+		// Check for segment errors (allow soft failures – log and skip bad segments)
+		var goodSegPaths []string
+		for i, err := range segErrors {
+			if err != nil {
+				log.Printf("[Job %s] Segment %d failed, skipping from timeline: %v", jobID, i, err)
+				continue
+			}
+			if segVideoPaths[i] != "" {
+				goodSegPaths = append(goodSegPaths, segVideoPaths[i])
+			}
+		}
+
+		if len(goodSegPaths) == 0 {
+			h.markJobFailed(jobID, fmt.Errorf("all segment video fetches failed"))
 			return
 		}
 
-		// Prepare stock video (search -> download -> loop -> trim)
-		stockKeywords := req.StockKeywords
-		if stockKeywords == "" {
-			stockKeywords = "nature technology abstract" // Default fallback
-		}
-
-		mergedVideoPath, err = h.stockVideoService.PrepareStockVideo(stockKeywords, audioDuration, jobID)
-		if err != nil {
-			h.markJobFailed(jobID, fmt.Errorf("stock video preparation failed: %w", err))
+		// --- Concatenate all segment videos into one video track ---
+		updateStatus("Concatenating segment videos", 82)
+		concatVideoPath := filepath.Join(tempDir, "output", "segments_concat.mp4")
+		if err := utils.ConcatVideosNoAudio(goodSegPaths, concatVideoPath); err != nil {
+			h.markJobFailed(jobID, fmt.Errorf("segment video concat failed: %w", err))
 			return
 		}
+		mergedVideoPath = concatVideoPath
 
 	} else {
 		// AI Video Generation Workflow
@@ -325,6 +383,26 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 
 		// Step 6: Generate videos
 		updateStatus(fmt.Sprintf("Generating %d video segments", len(videoSegments)), 55)
+
+		// Sync video duration with actual audio duration
+		actualAudioDuration, err := utils.GetVideoDuration(mergedAudioPath)
+		if err != nil {
+			log.Printf("[Job %s] Failed to get audio duration for sync: %v", jobID, err)
+		} else {
+			totalEstimatedDuration := 0.0
+			for _, seg := range videoSegments {
+				totalEstimatedDuration += seg.EstimatedDuration
+			}
+			if totalEstimatedDuration > 0 {
+				scaleFactor := actualAudioDuration / totalEstimatedDuration
+				log.Printf("[Job %s] Syncing video duration. Audio: %.2fs, Estimated: %.2fs, Scale: %.4f",
+					jobID, actualAudioDuration, totalEstimatedDuration, scaleFactor)
+				for i := range videoSegments {
+					videoSegments[i].EstimatedDuration *= scaleFactor
+				}
+			}
+		}
+
 		durations := make([]float64, len(videoSegments))
 		for i, seg := range videoSegments {
 			durations[i] = seg.EstimatedDuration

@@ -71,7 +71,7 @@ func LoadConfig() (*Config, error) {
 		VideoFPS:        getEnvAsInt("VIDEO_FPS", 30),
 
 		// Transition settings
-		AudioCrossfadeDuration:  getEnvAsFloat("AUDIO_CROSSFADE_DURATION", 0.3),
+		AudioCrossfadeDuration:  getEnvAsFloat("AUDIO_CROSSFADE_DURATION", 0.0),
 		VideoTransitionType:     getEnv("VIDEO_TRANSITION_TYPE", "fade"),
 		VideoTransitionDuration: getEnvAsFloat("VIDEO_TRANSITION_DURATION", 0.5),
 

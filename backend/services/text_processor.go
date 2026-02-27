@@ -6,6 +6,42 @@ import (
 	"unicode"
 )
 
+// vietnameseStopWords contains common Vietnamese function words to ignore
+var vietnameseStopWords = map[string]bool{
+	// pronouns / particles
+	"tôi": true, "bạn": true, "chúng": true, "ta": true, "họ": true, "mình": true,
+	"anh": true, "chị": true, "em": true, "ông": true, "bà": true, "cô": true,
+	// prepositions / conjunctions
+	"và": true, "hoặc": true, "nhưng": true, "vì": true, "nên": true, "thì": true,
+	"mà": true, "để": true, "của": true, "với": true, "trong": true, "trên": true,
+	"dưới": true, "ngoài": true, "sau": true, "trước": true, "theo": true,
+	"tại": true, "ở": true, "từ": true, "đến": true, "về": true, "qua": true,
+	// verbs (common auxiliary)
+	"là": true, "được": true, "có": true, "sẽ": true, "đã": true, "đang": true,
+	"làm": true, "cho": true, "đây": true, "đó": true, "này": true, "kia": true,
+	// quantifiers
+	"một": true, "các": true, "những": true, "mọi": true, "nhiều": true, "ít": true,
+	"rất": true, "cũng": true, "còn": true, "lại": true, "nữa": true, "thêm": true,
+	// common adjectives that are too generic
+	"tốt": true, "xấu": true, "lớn": true, "nhỏ": true, "mới": true, "cũ": true,
+	"cao": true, "thấp": true, "nhanh": true, "chậm": true,
+}
+
+// englishStopWords contains common English stop words to ignore
+var englishStopWords = map[string]bool{
+	"a": true, "an": true, "the": true, "and": true, "or": true, "but": true,
+	"in": true, "on": true, "at": true, "to": true, "for": true, "of": true,
+	"with": true, "by": true, "from": true, "up": true, "about": true, "into": true,
+	"through": true, "during": true, "is": true, "are": true, "was": true, "were": true,
+	"be": true, "been": true, "being": true, "have": true, "has": true, "had": true,
+	"do": true, "does": true, "did": true, "will": true, "would": true, "could": true,
+	"should": true, "may": true, "might": true, "can": true, "this": true, "that": true,
+	"these": true, "those": true, "i": true, "you": true, "he": true, "she": true,
+	"we": true, "they": true, "it": true, "its": true, "not": true, "also": true,
+	"so": true, "as": true, "if": true, "then": true, "than": true, "when": true,
+	"very": true, "just": true, "more": true, "most": true, "such": true,
+}
+
 // TextProcessor handles text segmentation for audio and video
 type TextProcessor struct {
 	AudioChunkSize       int
@@ -184,30 +220,45 @@ func (tp *TextProcessor) smartSplit(text string, limit int) []string {
 		}
 
 		// 1. Try splitting at major punctuation (comma, semicolon, colon, etc.)
-		// Priority: ; : , - —
-		punctuations := []string{";", ":", ",", " - ", " — "}
+		// Priority: ; : , - — .
+		punctuations := []string{";", ":", ",", " - ", " — ", "."}
 		bestPuncIdx := -1
 
-		for _, punc := range punctuations {
-			// Find LAST occurrence of this punctuation within limit
-			// We restrict search to the "end region" of the allowed chunk to maximize chunk size
-			limitIdx := limit
-			if limitIdx > len(remaining) {
-				limitIdx = len(remaining)
-			}
+		// Helper to find punctuation in a range
+		findPunc := func(start, end int) int {
+			localBestIdx := -1
+			for _, punc := range punctuations {
+				// Find LAST occurrence of this punctuation within range
+				// Extract substring to search in
+				if start >= end {
+					continue
+				}
+				searchArea := remaining[start:end]
 
-			// Extract substring to search in
-			searchArea := remaining[searchStart:limitIdx]
+				if idx := strings.LastIndex(searchArea, punc); idx != -1 {
+					// absolute index = start + idx + length of punctuation
+					actualIdx := start + idx + len(punc)
 
-			if idx := strings.LastIndex(searchArea, punc); idx != -1 {
-				// absolute index = searchStart + idx + length of punctuation (to keep punctuation with the first part)
-				actualIdx := searchStart + idx + len(punc)
-
-				// Keep punctuation with the preceding chunk usually, or split after it
-				if actualIdx > bestPuncIdx {
-					bestPuncIdx = actualIdx
+					// Keep punctuation with the preceding chunk usually, or split after it
+					if actualIdx > localBestIdx {
+						localBestIdx = actualIdx
+					}
 				}
 			}
+			return localBestIdx
+		}
+
+		// First pass: Try preferred range [limit/3, limit]
+		limitIdx := limit
+		if limitIdx > len(remaining) {
+			limitIdx = len(remaining)
+		}
+		bestPuncIdx = findPunc(searchStart, limitIdx)
+
+		// Second pass: If no punctuation found in preferred range, try [0, limit/3]
+		// This prevents "hard splits" when punctuation is only at the start
+		if bestPuncIdx == -1 {
+			bestPuncIdx = findPunc(0, searchStart)
 		}
 
 		if bestPuncIdx != -1 {
@@ -244,6 +295,66 @@ func (tp *TextProcessor) smartSplit(text string, limit int) []string {
 	}
 
 	return chunks
+}
+
+// ExtractKeywordsFromText extracts meaningful keywords from a text segment for use as a Pexels search query.
+// It strips common Vietnamese and English stop words and returns up to 5 significant words.
+// An optional styleHint (e.g. "cinematic nature") is appended to the result.
+func (tp *TextProcessor) ExtractKeywordsFromText(text, styleHint string) string {
+	if text == "" {
+		if styleHint != "" {
+			return styleHint
+		}
+		return "abstract"
+	}
+
+	// Lowercase for processing
+	lower := strings.ToLower(text)
+
+	// Remove punctuation, keep letters/digits/spaces
+	var cleaned strings.Builder
+	for _, r := range lower {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsSpace(r) {
+			cleaned.WriteRune(r)
+		} else {
+			cleaned.WriteRune(' ')
+		}
+	}
+
+	words := strings.Fields(cleaned.String())
+
+	// Filter stop words and very short tokens
+	var meaningful []string
+	seen := make(map[string]bool)
+	for _, w := range words {
+		if len([]rune(w)) < 2 {
+			continue
+		}
+		if vietnameseStopWords[w] || englishStopWords[w] {
+			continue
+		}
+		if seen[w] {
+			continue // deduplicate
+		}
+		seen[w] = true
+		meaningful = append(meaningful, w)
+		if len(meaningful) >= 5 {
+			break
+		}
+	}
+
+	if len(meaningful) == 0 {
+		if styleHint != "" {
+			return styleHint
+		}
+		return "abstract"
+	}
+
+	result := strings.Join(meaningful, " ")
+	if styleHint != "" {
+		result += " " + styleHint
+	}
+	return result
 }
 
 // SplitForVideo splits text into segments based on estimated reading duration
