@@ -10,25 +10,32 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
 
 // StockVideoService handles stock video searching and downloading
 type StockVideoService struct {
-	apiKey     string
-	httpClient *http.Client
-	tempDir    string
+	apiKey        string
+	httpClient    *http.Client
+	tempDir       string
+	geminiService *GeminiService      // AI image fallback tier 4
+	hfService     *HuggingFaceService // AI image fallback tier 3 (preferred, cheaper)
+	jobMediaTrack sync.Map            // Tracks used links/keywords per jobID to guarantee uniqueness
 }
 
 // NewStockVideoService creates a new stock video service
-func NewStockVideoService(apiKey, tempDir string) *StockVideoService {
+func NewStockVideoService(apiKey, tempDir string, geminiSvc *GeminiService, hfSvc *HuggingFaceService) *StockVideoService {
 	return &StockVideoService{
 		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
-		tempDir: tempDir,
+		tempDir:       tempDir,
+		geminiService: geminiSvc,
+		hfService:     hfSvc,
 	}
 }
 
@@ -50,10 +57,19 @@ type PexelsVideoResponse struct {
 	} `json:"videos"`
 }
 
+// CleanupJob media tracking after success/failure
+func (sv *StockVideoService) CleanupJob(jobID string) {
+	sv.jobMediaTrack.Delete(jobID)
+}
+
 // PrepareStockVideo searches, downloads multiple short videos, and merges them to match duration
 func (sv *StockVideoService) PrepareStockVideo(keywords string, targetDuration float64, jobID string) (string, error) {
+	// Setup per-job tracking map
+	trackIface, _ := sv.jobMediaTrack.LoadOrStore(jobID, &sync.Map{})
+	usedMedia := trackIface.(*sync.Map)
+
 	// 1. Search for multiple short videos (5-10s)
-	videoURLs, err := sv.searchMultipleVideos(keywords, targetDuration, "landscape")
+	videoURLs, err := sv.searchMultipleVideos(keywords, targetDuration, "landscape", usedMedia)
 	if err != nil {
 		return "", fmt.Errorf("failed to search videos: %w", err)
 	}
@@ -119,22 +135,88 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 
 	fmt.Printf("[SegVideo %d] Searching Pexels for: %q (need %.2fs, orientation: %s)\n", segIndex, keywords, audioDuration, orientation)
 
+	// Setup per-job tracking map
+	trackIface, _ := sv.jobMediaTrack.LoadOrStore(jobID, &sync.Map{})
+	usedMedia := trackIface.(*sync.Map)
+
 	// 1. Search Pexels – fetch up to 15 candidates per query
-	videoInfos, err := sv.searchVideoInfos(keywords, 15, orientation)
+	videoInfos, err := sv.searchVideoInfos(keywords, 15, orientation, usedMedia)
 	if err != nil || len(videoInfos) == 0 {
-		// Fallback: try generic keyword with same orientation
-		fmt.Printf("[SegVideo %d] Primary search failed (%v), trying fallback\n", segIndex, err)
-		fallbackKw := "abstract nature"
-		if orientation == "portrait" {
-			fallbackKw = "abstract vertical"
+		// Fallback tier 1a: Split keywords and search word-by-word
+		fmt.Printf("[SegVideo %d] Primary search failed (%v), trying individual words...\n", segIndex, err)
+		words := strings.Fields(keywords)
+		for _, word := range words {
+			if len(word) > 2 { // skip tiny words like "a", "of", "in", "to"
+				fmt.Printf("[SegVideo %d] Trying individual word: %q\n", segIndex, word)
+				videoInfos, err = sv.searchVideoInfos(word, 15, orientation, usedMedia)
+				if err == nil && len(videoInfos) > 0 {
+					fmt.Printf("[SegVideo %d] Found %d results for word: %q\n", segIndex, len(videoInfos), word)
+					break
+				}
+			}
 		}
-		videoInfos, err = sv.searchVideoInfos(fallbackKw, 15, orientation)
+
 		if err != nil || len(videoInfos) == 0 {
-			// Last resort: try landscape orientation as fallback for portrait
-			fmt.Printf("[SegVideo %d] Fallback also failed, trying landscape fallback\n", segIndex)
-			videoInfos, err = sv.searchVideoInfos("abstract nature", 15, "landscape")
-			if err != nil {
-				return "", fmt.Errorf("pexels search failed even with fallback: %w", err)
+			// Fallback tier 1b: try generic keyword with same orientation
+			fmt.Printf("[SegVideo %d] Single word search failed, trying generic fallback...\n", segIndex)
+			fallbackKw := "abstract nature"
+			if orientation == "portrait" {
+				fallbackKw = "abstract vertical"
+			}
+			videoInfos, err = sv.searchVideoInfos(fallbackKw, 15, orientation, usedMedia)
+			if err != nil || len(videoInfos) == 0 {
+				// Fallback tier 2: landscape orientation
+				fmt.Printf("[SegVideo %d] Fallback also failed, trying landscape fallback\n", segIndex)
+				videoInfos, err = sv.searchVideoInfos("abstract nature", 15, "landscape", usedMedia)
+				if err != nil || len(videoInfos) == 0 {
+					// Fallback tier 3 & 4: AI image generation → Ken Burns animated video
+
+					// Make the AI prompt unique
+					uniqueKeyword := keywords
+					if _, loaded := usedMedia.LoadOrStore("ai_kw_"+keywords, true); loaded {
+						// Already used this keyword, salt it so the AI generates a different image
+						uniqueKeyword = keywords + " alternate dramatic angle"
+						usedMedia.Store("ai_kw_"+uniqueKeyword, true)
+					}
+
+					imgPath := filepath.Join(segDir, "fallback.png")
+					fallbackVideoPath := filepath.Join(segDir, "fallback_animated.mp4")
+
+					// Tier 3: HuggingFace FLUX.1-schnell (cheaper, faster)
+					if sv.hfService != nil && sv.hfService.HasToken() {
+						if imgBytes, imgErr := sv.hfService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
+							if os.WriteFile(imgPath, imgBytes, 0644) == nil {
+								if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
+									fmt.Printf("[SegVideo %d] HuggingFace FLUX fallback succeeded!\n", segIndex)
+									return fallbackVideoPath, nil
+								} else {
+									fmt.Printf("[SegVideo %d] HuggingFace FLUX video conversion failed: %v\n", segIndex, err)
+								}
+							}
+						} else {
+							fmt.Printf("[SegVideo %d] HuggingFace FLUX failed: %v\n", segIndex, imgErr)
+						}
+					}
+
+					// Tier 4: Gemini 2.5 Flash Image (backup)
+					if sv.geminiService != nil && sv.geminiService.HasKeys() {
+						if imgBytes, imgErr := sv.geminiService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
+							if os.WriteFile(imgPath, imgBytes, 0644) == nil {
+								if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
+									fmt.Printf("[SegVideo %d] Gemini Imagen fallback succeeded!\n", segIndex)
+									return fallbackVideoPath, nil
+								} else {
+									fmt.Printf("[SegVideo %d] Gemini Imagen video conversion failed: %v\n", segIndex, err)
+								}
+							}
+						} else {
+							fmt.Printf("[SegVideo %d] Gemini Imagen failed: %v\n", segIndex, imgErr)
+						}
+					}
+
+					return "", fmt.Errorf("all fallbacks exhausted for segment %d (keywords: %q): %w", segIndex, keywords, err)
+				}
+
 			}
 		}
 	}
@@ -147,6 +229,12 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 	for totalDuration < audioDuration+0.5 && downloadIdx < len(videoInfos) {
 		info := videoInfos[downloadIdx]
 		downloadIdx++
+
+		// Check if we already used this exact video in this job
+		if _, loaded := usedMedia.LoadOrStore("vid_"+info.Link, true); loaded {
+			fmt.Printf("[SegVideo %d] Skipping video %d because it is duplicate in this job.\n", segIndex, downloadIdx)
+			continue
+		}
 
 		dlPath := filepath.Join(segDir, fmt.Sprintf("raw_%02d.mp4", downloadIdx))
 		fmt.Printf("[SegVideo %d] Downloading video %d (%.0fs clip)...\n", segIndex, downloadIdx, float64(info.Duration))
@@ -196,20 +284,20 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 	trimmedPath := filepath.Join(segDir, "segment.mp4")
 	var vfFilter string
 	if orientation == "portrait" {
-		// TikTok: 1080x1920 (9:16 portrait)
-		vfFilter = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
+		// TikTok: 1080x1920 (9:16 portrait) with Color Grade
+		vfFilter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,setsar=1,fps=30,eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p"
 	} else {
-		// YouTube: 1920x1080 (16:9 landscape)
-		vfFilter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
+		// YouTube: 1920x1080 (16:9 landscape) with Color Grade
+		vfFilter = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080:(iw-ow)/2:(ih-oh)/2,setsar=1,fps=30,eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p"
 	}
 
 	if err := utils.RunFFmpegCommand([]string{
 		"-i", concatPath,
-		"-t", fmt.Sprintf("%.3f", audioDuration),
+		"-t", fmt.Sprintf("%.3f", audioDuration+0.4), // add 0.4s buffer to prevent trailing audio truncation
 		"-vf", vfFilter,
 		"-c:v", "libx264",
-		"-preset", "fast",
-		"-crf", "23",
+		"-preset", "medium",
+		"-crf", "20",
 		"-an", // no audio track – audio comes from TTS
 		"-y", trimmedPath,
 	}); err != nil {
@@ -228,7 +316,7 @@ type videoInfo struct {
 
 // searchVideoInfos searches Pexels and returns ordered list of (link, duration) for the best-quality files.
 // orientation: "landscape", "portrait", or "square"
-func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orientation string) ([]videoInfo, error) {
+func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orientation string, usedMedia *sync.Map) ([]videoInfo, error) {
 	baseURL := "https://api.pexels.com/videos/search"
 	params := url.Values{}
 	params.Add("query", keywords)
@@ -283,7 +371,12 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orie
 		return nil, err
 	}
 
-	var infos []videoInfo
+	type scoredVideo struct {
+		info  videoInfo
+		score int
+	}
+	var scoredInfos []scoredVideo
+
 	for _, video := range result.Videos {
 		if video.Duration < 3 || video.Duration > 60 {
 			continue
@@ -298,6 +391,7 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orie
 					ar = float64(file.Height) / float64(file.Width)
 				}
 				isPortrait916 := ar > 1.77 && ar < 1.79
+				isUHD := file.Quality == "uhd" || file.Height >= 3840 || file.Width >= 3840
 				if file.Width == 1080 && file.Height == 1920 {
 					score = 10000
 				} else if isPortrait916 && file.Height >= 1280 {
@@ -309,6 +403,9 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orie
 				} else {
 					score = 1
 				}
+				if isUHD {
+					score += 3000 // 4K downscale to 1080p = ultra-sharp
+				}
 				score += file.Height // taller = better for portrait
 			} else {
 				// For landscape: prefer 1920x1080
@@ -317,6 +414,7 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orie
 					ar = float64(file.Width) / float64(file.Height)
 				}
 				is169 := ar > 1.77 && ar < 1.79
+				isUHD := file.Quality == "uhd" || file.Width >= 3840 || file.Height >= 3840
 				if file.Width == 1920 && file.Height == 1080 {
 					score = 10000
 				} else if is169 && file.Width >= 1280 {
@@ -328,6 +426,9 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orie
 				} else {
 					score = 1
 				}
+				if isUHD {
+					score += 3000 // 4K downscale to 1080p = ultra-sharp
+				}
 				score += file.Width
 			}
 			if score > bestScore {
@@ -336,14 +437,39 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orie
 			}
 		}
 		if bestLink != "" {
-			infos = append(infos, videoInfo{Link: bestLink, Duration: video.Duration})
+			// Apply duration penalty: subtract points for longer videos
+			finalScore := bestScore - (video.Duration * 10)
+
+			// Massive bonus for ideal generative duration (5s - 15s)
+			if video.Duration >= 5 && video.Duration <= 15 {
+				finalScore += 5000
+			}
+
+			// Check and exclude heavily penalized / used URLs logic here, or just let 'used' check at download phase.
+			// The penalty phase runs globally. But we already filter at download phase! So it's fine.
+
+			scoredInfos = append(scoredInfos, scoredVideo{
+				info:  videoInfo{Link: bestLink, Duration: video.Duration},
+				score: finalScore,
+			})
 		}
 	}
+
+	// Sort by highest score first
+	sort.Slice(scoredInfos, func(i, j int) bool {
+		return scoredInfos[i].score > scoredInfos[j].score
+	})
+
+	var infos []videoInfo
+	for _, si := range scoredInfos {
+		infos = append(infos, si.info)
+	}
+
 	return infos, nil
 }
 
 // searchMultipleVideos searches Pexels for multiple short videos (5-10s) matching keywords
-func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuration float64, orientation string) ([]string, error) {
+func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuration float64, orientation string, usedMedia *sync.Map) ([]string, error) {
 	baseURL := "https://api.pexels.com/videos/search"
 	params := url.Values{}
 	params.Add("query", keywords)
@@ -461,6 +587,11 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 			}
 
 			if bestLink != "" {
+				// Prevent duplicate videos in the same job
+				if _, loaded := usedMedia.LoadOrStore("vid_"+bestLink, true); loaded {
+					continue
+				}
+
 				shortVideos = append(shortVideos, struct {
 					Duration int
 					Link     string

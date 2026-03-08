@@ -150,6 +150,16 @@ func (as *AudioService) generateSingleAudio(text, voice string, speed float64, j
 			return "", fmt.Errorf("failed to save audio: %w", err)
 		}
 
+		// Elite Fast-Pacing: Remove dead air and trailing silence from the TTS chunk
+		pacedPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_paced_%03d.mp3", index))
+		if err := utils.RemoveAudioSilence(audioPath, pacedPath); err == nil {
+			// If pacing succeeded, clean up original and use the paced version
+			os.Remove(audioPath)
+			return pacedPath, nil
+		}
+
+		// Fallback to original if silence removal filtering failed for some edge case
+		log.Printf("[Chunk %d] Silence removal failed (using original): %v", index, lastErr)
 		return audioPath, nil
 	}
 

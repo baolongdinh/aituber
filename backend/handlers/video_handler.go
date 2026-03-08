@@ -67,9 +67,10 @@ func NewVideoHandler(cfg *config.Config) *VideoHandler {
 		cfg.VideoTransitionDuration,
 	)
 
-	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir)
-	composerService := services.NewComposerService(cfg.VideoBitrate)
 	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
+	hfService := services.NewHuggingFaceService(cfg.HuggingFaceToken)
+	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, geminiService, hfService)
+	composerService := services.NewComposerService(cfg.VideoBitrate)
 
 	return &VideoHandler{
 		cfg:               cfg,
@@ -111,7 +112,11 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 
 	// Set default speaking speed if not provided
 	if req.SpeakingSpeed == 0 {
-		req.SpeakingSpeed = 1.0
+		if req.Platform == "tiktok" {
+			req.SpeakingSpeed = 1.2 // TikTok: faster pacing = more engaging
+		} else {
+			req.SpeakingSpeed = 1.0 // YouTube: normal balanced pace
+		}
 	}
 	// Validate speaking speed range
 	if req.SpeakingSpeed < 0.5 || req.SpeakingSpeed > 2.0 {

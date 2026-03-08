@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -81,58 +82,72 @@ type geminiResponse struct {
 
 // GenerateYouTubeScript generates a long-form YouTube script from a topic
 func (gs *GeminiService) GenerateYouTubeScript(topic string) ([]models.VideoSegment, error) {
-	prompt := fmt.Sprintf(`Bạn là một chuyên gia tạo content YouTube bằng tiếng Việt. Hãy viết một kịch bản video YouTube hoàn chỉnh về chủ đề: "%s"
+	prompt := fmt.Sprintf(`Bạn là chuyên gia tạo content YouTube viral bằng tiếng Việt được 1 triệu view. Hãy viết kịch bản video YouTube về: "%s"
 
-YÊU CẦU:
-- Ngôn ngữ: Tiếng Việt tự nhiên, dễ hiểu
-- Cấu trúc: Hook mạnh → Intro → Nội dung chính (3-5 phần) → Kết luận + CTA
-- Giọng điệu: Thân thiện, chuyên nghiệp, có chiều sâu
-- QUAN TRỌNG: Chỉ viết lời thoại, KHÔNG có stage direction hay [music]
+CẤU TRÚC BẮT BUỘC:
+- Hook (0-15s): 1 câu hỏi cực mạnh hoặc 1 sự thật gây sốc, tạo tò mò ngay lập tức
+- Problem Setup (15-45s): Đặt bối cảnh, tại sao người xem phải quan tâm
+- Nội dung chính (3-6 phần, mỗi phần 60-90s): Mỗi phần một insight cụ thể, có dẫn chứng
+- CTA cuối: Nhắc subscribe và goiý video liên quan
 
-BẮT BUỘC TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON ARRAY SAU (không kèm text nào khác ngoài array JSON này):
+YÊU CẦU NỘI DUNG:
+- Giọng điệu: Thẳng thắn, gần gũi như người bạn thông thái, KHÔNG rập khuôn
+- Mỗi "text" segment phải TỰ KHÉ P: có thể đứng độc lập mà không cần context trước
+- Tránh dùng cụm sáo rỗng như "Thật thú vị", "Hãy cùng tìm hiểu"
+- Tổng script: 1000-1500 từ tiếng Việt
+
+BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác):
 [
   {
-    "text": "Đoạn lời thoại hook tạo sự tò mò (khoảng 30-50 từ)...",
-    "pexels_search_query": "shocked person looking at phone"
-  },
-  {
-    "text": "Đoạn lời thoại cho phần tiếp theo (khoảng 30-50 từ)...",
-    "pexels_search_query": "time lapse futuristic city"
+    "text": "Đoạn script tiếng Việt (40-70 từ)...",
+    "pexels_search_query": "person running fast stress city"
   }
 ]
-Lưu ý: 
-1. "pexels_search_query" phải là cụm từ khóa tiếng Anh RẤT NGẮN, miêu tả một HÀNH ĐỘNG/SỰ VẬT CỤ THỂ để tôi dùng tìm kiếm trên Pexels video (ví dụ: "sad man walking rain", "gold coins falling").
-2. Mỗi "text" nên có độ dài khoảng 30-80 từ để video chuyển cảnh hợp lý, tổng script khoảng 800-1500 từ.`, topic)
 
-	return gs.callGemini(prompt, 0.7, 4096)
+QUY TẮC pexels_search_query (BẮT BUỘC):
+1. Phải là tiếng Anh ngắn gọn (2-5 từ)
+2. PHẢI có ĐỘNG TỪ mô tả chuyển động: running, falling, flying, exploding, rising, spinning, zooming
+3. Mô tả hình ảnh B-roll trực quan, KHÔNG trừu tượng
+4. Ví dụ TỐT: "money falling slow motion", "athlete running sunrise", "city timelapse traffic"
+5. Ví dụ XẤU: "success", "teamwork", "growth" (quá chung chung)`, topic)
+
+	return gs.callGemini(prompt, 0.75, 4096)
 }
 
 // GenerateTikTokScript generates a short, viral TikTok script from a topic
 func (gs *GeminiService) GenerateTikTokScript(topic string) ([]models.VideoSegment, error) {
-	prompt := fmt.Sprintf(`Bạn là chuyên gia tạo content TikTok viral bằng tiếng Việt. Viết kịch bản TikTok về: "%s"
+	prompt := fmt.Sprintf(`Bạn là chuyên gia Content Creator mảng TikTok/Shorts (hàng triệu view) với phong cách sâu sắc, lôi cuốn và kể chuyện (storytelling) cực đỉnh bằng tiếng Việt. Viết 1 kịch bản TikTok/Shorts có thời lượng tự nhiên rơi vào khoảng 1 phút 30 giây đến 1 phút 50 giây (1m30s - 1m50s) về: "%s"
 
-CẤU TRÚC:
-HOOK (0-3s): 1 câu mạnh, tạo tò mò ngay lập tức
-SETUP (3-15s): Đặt câu hỏi chưa trả lời
-CONTENT (15-45s): Giá trị cốt lõi, ngắn gọn  
-PAYOFF + CTA (45-60s): Kết thúc thỏa mãn + kêu gọi follow
+CẤU TRÚC BẮT BUỘC:
+- HOOK (0-5s): 1 câu mở đầu mang tính lật đổ nhận thức thông thường hoặc đánh trúng tim đen. Phải cực cháy!
+- STORY/PROBLEM SETUP (5-20s): Đưa ra một câu chuyện ngắn hoặc đào sâu vào nỗi đau/vấn đề. Tạo sự đồng cảm mạnh mẽ.
+- THE "MEAT" / INSIGHTS DUMPS (20-80s): 3-4 góc nhìn hoặc bài học thực chiến sâu sắc. Đừng nói những thứ chung chung ai cũng biết trên mạng. Phải có dẫn chứng, ví dụ thực tế hoặc logic thuyết phục.
+- CLIMAX & PAYOFF (80-100s): Cú twist, bài học đọng lại hoặc kết luận thay đổi tư duy.
+- CTA (100s+): Kêu gọi hành động tự nhiên, không gượng ép (VD: "Lưu video này lại để...").
 
-BẮT BUỘC TRẢ VỀ DUY NHẤT ĐỊNH DẠNG JSON ARRAY SAU (không kèm text nào khác ngoài JSON):
+YÊU CẦU CHẤT LƯỢNG (PO REQUIREMENTS):
+- Độ dài: Khoảng 300 - 450 từ (tiếng Việt). Đảm bảo thời lượng đọc tốn khoảng ~1m40s.
+- NO CLIFFHANGERS: TUYỆT ĐỐI KHÔNG làm nội dung dở dang kiểu "Đón xem Phần 2", "Follow để xem tiếp". Video phải có một kết luận TRỌN VẸN.
+- Giọng điệu (Tone): Cuốn hút, chân thật, như một chuyên gia đang ngồi tâm sự mỏng với người xem. Không dùng từ ngữ sáo rỗng hay văn phong rập khuôn của AI. Hãy dùng ngôn ngữ đời thường, sắc sảo.
+- Có nhịp điệu (Pacing): Câu ngắn xen lẫn câu dài để tạo nhịp điệu khi đọc.
+- Mỗi "text" segment (đoạn) phải dài khoảng 25-45 từ. Số lượng segment nên rơi vào khoảng 8 đến 12 segments để hình ảnh thay đổi liên tục, giữ chân người xem.
+
+BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác ngoài JSON):
 [
   {
-    "text": "Hook cực mạnh ở 1-2 câu đầu...",
-    "pexels_search_query": "surprised face close up"
-  },
-  {
-    "text": "Phần setup...",
-    "pexels_search_query": "person thinking hard"
+    "text": "Câu Hook hoặc một đoạn kịch bản ngắn...",
+    "pexels_search_query": "shocked face close up slow motion"
   }
 ]
-Lưu ý: 
-1. "pexels_search_query" phải là cụm từ khóa tiếng Anh cực hay, RẤT NGẮN để tìm B-roll trên Pexels (VD: "working hard fast", "dollar bills flying"). Tuyệt đối không để nguyên tiếng Việt.
-2. Mỗi "text" dài khoảng 1-3 câu dài (20-40 từ) để nhịp video nhanh. Tổng độ dài script dưới 250 từ.`, topic)
 
-	return gs.callGemini(prompt, 0.8, 2048)
+QUY TẮC pexels_search_query (BẮT BUỘC):
+1. Là Tiếng Anh, ngắn gọn 2-5 từ, TẬP TRUNG vào HÀNH ĐỘNG/CHUYỂN ĐỘNG hoặc BIỂU CẢM.
+2. Phù hợp hoàn hảo với mood của đoạn text đó.
+3. Ví dụ TỐT: "person stressed working late", "money falling slow motion", "city crowd walking fast", "brain exploding idea".
+4. TUYỆT ĐỐI KHÔNG dùng từ trừu tượng kiểu "success", "mindset". Không dùng tiếng Việt.`, topic)
+
+	// Temperature 0.8 to encourage creative, natural storytelling
+	return gs.callGemini(prompt, 0.8, 4096)
 }
 
 // callGemini calls the Gemini API and parses response into JSON segment array
@@ -173,7 +188,7 @@ func (gs *GeminiService) callGemini(prompt string, temperature float64, maxToken
 
 // callWithKey calls Gemini and returns parsed json
 func (gs *GeminiService) callWithKey(apiKey, prompt string, temperature float64, maxTokens int) ([]models.VideoSegment, error) {
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=%s", apiKey)
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", apiKey)
 
 	// Note: We use system instructions implicitly in the prompt, or we can use the response_mime_type feature in Gemini API but raw text is fine when formatted.
 	reqBody := geminiRequest{
@@ -248,4 +263,115 @@ func (gs *GeminiService) callWithKey(apiKey, prompt string, temperature float64,
 
 	log.Printf("[Gemini] Generated JSON script with %d segments", len(segments))
 	return segments, nil
+}
+
+// GenerateImageForKeyword generates a stock-style cinematic image using gemini-2.5-flash-image.
+// Returns raw PNG bytes. Used as fallback when Pexels is unavailable.
+// orientation: "portrait" (9:16 for TikTok) or "landscape" (16:9 for YouTube).
+func (gs *GeminiService) GenerateImageForKeyword(keyword, orientation string) ([]byte, error) {
+	if !gs.HasKeys() {
+		return nil, fmt.Errorf("no Gemini API keys configured")
+	}
+
+	apiKey, err := gs.getNextKey()
+	if err != nil {
+		return nil, err
+	}
+
+	// Map orientation to supported aspect ratio
+	aspectRatio := "16:9"
+	if orientation == "portrait" {
+		aspectRatio = "9:16"
+	}
+
+	// Craft a cinematic B-roll prompt
+	imagePrompt := fmt.Sprintf(
+		"Professional cinematic B-roll stock photo: %s. "+
+			"Dramatic lighting, shallow depth of field, high resolution, "+
+			"photorealistic, no text, no watermarks, no people faces. "+
+			"Aspect ratio %s. Suitable for a documentary or news video segment.",
+		keyword, aspectRatio,
+	)
+
+	// gemini-2.5-flash-image uses the standard generateContent endpoint
+	// with responseModalities set to IMAGE
+	url := fmt.Sprintf(
+		"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=%s",
+		apiKey,
+	)
+
+	reqBody := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]interface{}{
+					{"text": imagePrompt},
+				},
+			},
+		},
+		"generationConfig": map[string]interface{}{
+			"responseModalities": []string{"IMAGE"},
+			"temperature":        1.0,
+		},
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal image request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create image request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := gs.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("image generation request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read image response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini-2.5-flash-image returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse standard Gemini response – image is in candidates[0].content.parts[0].inlineData
+	var gemResp struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					InlineData *struct {
+						MimeType string `json:"mimeType"`
+						Data     string `json:"data"` // base64
+					} `json:"inlineData,omitempty"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(body, &gemResp); err != nil {
+		return nil, fmt.Errorf("failed to parse image response: %w. Body: %s", err, string(body))
+	}
+
+	if len(gemResp.Candidates) == 0 {
+		return nil, fmt.Errorf("gemini-2.5-flash-image returned no candidates. Body: %s", string(body))
+	}
+
+	for _, part := range gemResp.Candidates[0].Content.Parts {
+		if part.InlineData != nil && part.InlineData.Data != "" {
+			imgBytes, decErr := base64.StdEncoding.DecodeString(part.InlineData.Data)
+			if decErr != nil {
+				return nil, fmt.Errorf("failed to decode base64 image: %w", decErr)
+			}
+			log.Printf("[Gemini/Image] Generated %s fallback image for %q (%d bytes, mime: %s)",
+				orientation, keyword, len(imgBytes), part.InlineData.MimeType)
+			return imgBytes, nil
+		}
+	}
+
+	return nil, fmt.Errorf("gemini-2.5-flash-image returned no image data in parts. Body: %s", string(body))
 }

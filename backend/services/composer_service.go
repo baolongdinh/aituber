@@ -24,7 +24,7 @@ func (cs *ComposerService) ComposeVideoWithAudio(videoPath, audioPath, outputPat
 	}
 
 	// Use FFmpeg utility to combine
-	err := utils.CombineAudioVideo(videoPath, audioPath, outputPath, cs.videoBitrate)
+	err := utils.CombineAudioVideo(videoPath, audioPath, outputPath)
 	if err != nil {
 		return fmt.Errorf("failed to compose video: %w", err)
 	}

@@ -187,7 +187,7 @@ func MergeVideosWithTransition(inputFiles []string, outputFile string, transitio
 		args := []string{
 			"-i", inputFiles[0],
 			"-c:v", "libx264",
-			"-preset", "slow",
+			"-preset", "medium",
 			"-crf", "18",
 			"-r", strconv.Itoa(fps),
 			"-s", resolution,
@@ -254,7 +254,7 @@ func MergeVideosWithTransition(inputFiles []string, outputFile string, transitio
 		"-filter_complex", filterComplex,
 		"-map", "[vout]",
 		"-c:v", "libx264",
-		"-preset", "slow",
+		"-preset", "medium",
 		"-crf", "18",
 		"-r", strconv.Itoa(fps),
 		"-y", outputFile,
@@ -264,13 +264,11 @@ func MergeVideosWithTransition(inputFiles []string, outputFile string, transitio
 }
 
 // CombineAudioVideo combines audio and video into final output
-func CombineAudioVideo(videoPath, audioPath, outputPath string, videoBitrate string) error {
+func CombineAudioVideo(videoPath, audioPath, outputPath string) error {
 	args := []string{
 		"-i", videoPath,
 		"-i", audioPath,
-		"-c:v", "libx264",
-		"-preset", "slow",
-		"-b:v", videoBitrate,
+		"-c:v", "copy",
 		"-c:a", "aac",
 		"-b:a", "192k",
 		"-map", "0:v:0",
@@ -305,7 +303,7 @@ func ExtendVideo(inputPath, outputPath string, targetDuration float64) error {
 			currentDuration, currentDuration-0.1, freezeDuration),
 		"-map", "[vout]",
 		"-c:v", "libx264",
-		"-preset", "slow",
+		"-preset", "medium",
 		"-crf", "18",
 		"-y", outputPath,
 	}
@@ -410,12 +408,64 @@ func ConcatVideos(inputFiles []string, outputPath string) error {
 		"-map", "[vout]",
 		"-map", "[aout]",
 		"-c:v", "libx264",
-		"-preset", "slow",
+		"-preset", "medium",
 		"-crf", "18",
 		"-c:a", "aac",
 		"-b:a", "192k",
 		"-y", outputPath,
 	)
 
+	return RunFFmpegCommand(args)
+}
+
+// RemoveAudioSilence removes silence from an audio file to improve pacing
+func RemoveAudioSilence(inputPath, outputPath string) error {
+	args := []string{
+		"-i", inputPath,
+		"-af", "silenceremove=stop_periods=-1:stop_duration=0.3:stop_threshold=-35dB",
+		"-c:a", "libmp3lame",
+		"-q:a", "2",
+		"-y", outputPath,
+	}
+	return RunFFmpegCommand(args)
+}
+
+// ImageToVideo converts a static image into a video clip with Ken Burns zoom animation.
+// duration: target video length in seconds. orientation: "portrait" or "landscape".
+func ImageToVideo(imagePath, outputPath string, duration float64, orientation string) error {
+	// Ken Burns: slow zoom from centre.
+	durationSec := int(duration) + 1
+
+	var filter string
+	if orientation == "portrait" {
+		// Output 1080x1920.
+		// Fix jitter: Scale image up by 4x before zooming, then zoompan downcales it smoothly back to 1080x1920.
+		filter = fmt.Sprintf(
+			"scale=1080*4:1920*4:force_original_aspect_ratio=increase,crop=1080*4:1920*4:(iw-ow)/2:(ih-oh)/2,"+
+				"zoompan=z='min(zoom+0.0007,1.15)':d=%d:x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':s=1080x1920:fps=30,"+
+				"eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p",
+			durationSec*30,
+		)
+	} else {
+		// Output 1920x1080.
+		filter = fmt.Sprintf(
+			"scale=1920*4:1080*4:force_original_aspect_ratio=increase,crop=1920*4:1080*4:(iw-ow)/2:(ih-oh)/2,"+
+				"zoompan=z='min(zoom+0.0007,1.15)':d=%d:x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2':s=1920x1080:fps=30,"+
+				"eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p",
+			durationSec*30,
+		)
+	}
+
+	args := []string{
+		"-loop", "1",
+		"-i", imagePath,
+		"-vf", filter,
+		"-t", fmt.Sprintf("%d", durationSec),
+		"-c:v", "libx264",
+		"-preset", "medium",
+		"-crf", "20",
+		"-an",
+		"-y", outputPath,
+	}
 	return RunFFmpegCommand(args)
 }
