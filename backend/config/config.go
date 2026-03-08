@@ -16,9 +16,13 @@ type Config struct {
 	Port    string
 	TempDir string
 
+	// Output directory for saved videos
+	OutputDir string
+
 	// API Keys Pool
-	TTSAPIKeys   []string
-	VideoAPIKeys []string
+	TTSAPIKeys    []string
+	VideoAPIKeys  []string
+	GeminiAPIKeys []string
 
 	// Processing Settings
 	MaxTextLength        int
@@ -51,12 +55,14 @@ func LoadConfig() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		Port:    getEnv("PORT", "8080"),
-		TempDir: getEnv("TEMP_DIR", "./backend/temp"),
+		Port:      getEnv("PORT", "8080"),
+		TempDir:   getEnv("TEMP_DIR", "./temp"),
+		OutputDir: getEnv("OUTPUT_DIR", "../ai-videos"),
 
 		// Parse API keys
-		TTSAPIKeys:   parseAPIKeys(getEnv("TTS_API_KEYS", "")),
-		VideoAPIKeys: parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
+		TTSAPIKeys:    parseAPIKeys(getEnv("TTS_API_KEYS", "")),
+		VideoAPIKeys:  parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
+		GeminiAPIKeys: parseAPIKeys(getEnv("GEMINI_API_KEYS", "")),
 
 		// Processing settings
 		MaxTextLength:        getEnvAsInt("MAX_TEXT_LENGTH", 50000),
@@ -95,9 +101,6 @@ func LoadConfig() (*Config, error) {
 func (c *Config) Validate() error {
 	if len(c.TTSAPIKeys) == 0 {
 		return errors.New("TTS_API_KEYS is required")
-	}
-	if len(c.VideoAPIKeys) == 0 {
-		return errors.New("VIDEO_API_KEYS is required")
 	}
 	if c.AudioChunkSize <= 0 {
 		return errors.New("AUDIO_CHUNK_SIZE must be positive")
@@ -158,6 +161,6 @@ func parseAPIKeys(keysStr string) []string {
 }
 
 func (c *Config) String() string {
-	return fmt.Sprintf("Config{Port: %s, TTS Keys: %d, Video Keys: %d, ChunkSize: %d}",
-		c.Port, len(c.TTSAPIKeys), len(c.VideoAPIKeys), c.AudioChunkSize)
+	return fmt.Sprintf("Config{Port: %s, TTS Keys: %d, Gemini Keys: %d, ChunkSize: %d, OutputDir: %s}",
+		c.Port, len(c.TTSAPIKeys), len(c.GeminiAPIKeys), c.AudioChunkSize, c.OutputDir)
 }

@@ -96,11 +96,18 @@ func (as *AudioService) GenerateAudioChunks(chunks []string, voice string, speed
 
 // generateSingleAudio generates audio for a single text chunk with retry
 func (as *AudioService) generateSingleAudio(text, voice string, speed float64, jobID string, index int) (string, error) {
-	maxRetries := 3
+	maxRetries := 5
 	var lastErr error
+	currentText := text
 
 	log.Printf("[Chunk %d] Calling TTS - TEXT: %s ", index, text)
 	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			// Append a space to the text to bypass FPT.AI cache on retry
+			// This forces the TTS engine to generate a fresh audio file instead of returning a broken cached URL
+			currentText += " "
+		}
+
 		// Get API key from pool
 		apiKey, err := as.apiPool.GetRandomKey()
 		if err != nil {
@@ -109,11 +116,11 @@ func (as *AudioService) generateSingleAudio(text, voice string, speed float64, j
 
 		// Call TTS API - this returns async URL or direct audio
 		log.Printf("[Chunk %d] Calling TTS API (attempt %d/%d)", index, attempt+1, maxRetries)
-		asyncURL, apiErr := as.callFPTTTSAsync(text, voice, speed, apiKey)
+		asyncURL, apiErr := as.callFPTTTSAsync(currentText, voice, speed, apiKey)
 		if apiErr != nil {
 			// API call failed - blacklist the key
 			log.Printf("[Chunk %d] API call failed: %v", index, apiErr)
-			as.apiPool.MarkFailed(apiKey, time.Duration(60)*time.Second)
+			as.apiPool.MarkFailed(apiKey, time.Duration(15)*time.Second)
 			lastErr = apiErr
 			time.Sleep(time.Duration(attempt+1) * time.Second)
 			continue

@@ -1,155 +1,184 @@
 <template>
-  <v-card>
-    <v-card-title class="text-h5">
-      <v-icon left>mdi-progress-clock</v-icon>
-      Progress
-    </v-card-title>
-    <v-card-text>
-      <!-- Status Badge -->
-      <v-chip
-        :color="statusColor"
-        :prepend-icon="statusIcon"
-        size="large"
-        class="mb-4"
-      >
-        {{ statusText }}
-      </v-chip>
+  <div class="progress-tracker">
+    <!-- Status -->
+    <div class="status-header">
+      <div class="status-chip" :class="status">
+        <span class="status-icon">{{ statusIcon }}</span>
+        <span>{{ statusText }}</span>
+      </div>
+      <div v-if="status === 'processing'" class="progress-pct">{{ progress }}%</div>
+    </div>
 
-      <!-- Progress Bar -->
-      <v-progress-linear
-        v-if="status !== 'idle'"
-        :model-value="progress"
-        :color="progressColor"
-        height="30"
-        striped
-        class="mb-4"
-      >
-        <template v-slot:default>
-          <strong class="text-white">{{ progress }}%</strong>
-        </template>
-      </v-progress-linear>
+    <!-- Progress bar -->
+    <div v-if="status !== 'idle'" class="progress-bar-wrap">
+      <div
+        class="progress-bar-fill"
+        :class="status"
+        :style="{ width: progress + '%' }"
+      />
+    </div>
 
-      <!-- Current Step -->
-      <v-alert
-        v-if="currentStep && status === 'processing'"
-        type="info"
-        variant="tonal"
-        class="mb-4"
-      >
-        <strong>Current Step:</strong> {{ currentStep }}
-      </v-alert>
+    <!-- Current step -->
+    <div v-if="currentStep && status === 'processing'" class="current-step">
+      <span class="step-dot spinning">⟳</span>
+      {{ currentStep }}
+    </div>
 
-      <!-- Error Message -->
-      <v-alert
-        v-if="error"
-        type="error"
-        variant="tonal"
-        closable
-        class="mb-4"
-      >
-        <strong>Error:</strong> {{ error }}
-      </v-alert>
+    <!-- Error -->
+    <div v-if="error" class="error-box">
+      <span>⚠️</span> {{ error }}
+    </div>
 
-      <!-- Processing Steps Timeline -->
-      <v-timeline
-        v-if="status !== 'idle'"
-        density="compact"
-        align="start"
-        class="mt-4"
+    <!-- Timeline -->
+    <div v-if="status !== 'idle'" class="timeline">
+      <div
+        v-for="step in steps"
+        :key="step.name"
+        class="timeline-item"
+        :class="{ completed: step.completed, current: step.current }"
       >
-        <v-timeline-item
-          v-for="step in steps"
-          :key="step.name"
-          :dot-color="step.completed ? 'success' : (step.current ? 'primary' : 'grey')"
-          size="small"
-        >
-          <div class="d-flex align-center">
-            <v-icon
-              :color="step.completed ? 'success' : (step.current ? 'primary' : 'grey')"
-              size="small"
-              class="mr-2"
-            >
-              {{ step.completed ? 'mdi-check-circle' : (step.current ? 'mdi-loading mdi-spin' : 'mdi-circle-outline') }}
-            </v-icon>
-            <span :class="{ 'font-weight-bold': step.current }">{{ step.name }}</span>
-          </div>
-        </v-timeline-item>
-      </v-timeline>
-    </v-card-text>
-  </v-card>
+        <div class="timeline-dot">
+          <span v-if="step.completed">✓</span>
+          <span v-else-if="step.current" class="spinning">◌</span>
+          <span v-else>○</span>
+        </div>
+        <span class="timeline-label">{{ step.name }}</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
 
 const props = defineProps({
-  status: {
-    type: String,
-    default: 'idle'
-  },
-  progress: {
-    type: Number,
-    default: 0
-  },
-  currentStep: {
-    type: String,
-    default: ''
-  },
-  error: {
-    type: String,
-    default: null
-  }
+  status: { type: String, default: 'idle' },
+  progress: { type: Number, default: 0 },
+  currentStep: { type: String, default: '' },
+  error: { type: String, default: null }
 })
 
-const statusColor = computed(() => {
-  switch (props.status) {
-    case 'processing': return 'primary'
-    case 'completed': return 'success'
-    case 'failed': return 'error'
-    default: return 'grey'
-  }
-})
+const statusIcon = computed(() => ({
+  processing: '⟳',
+  completed: '✓',
+  failed: '✕',
+  idle: '◇'
+}[props.status] || '◇'))
 
-const statusIcon = computed(() => {
-  switch (props.status) {
-    case 'processing': return 'mdi-loading mdi-spin'
-    case 'completed': return 'mdi-check-circle'
-    case 'failed': return 'mdi-alert-circle'
-    default: return 'mdi-help-circle'
-  }
-})
-
-const statusText = computed(() => {
-  switch (props.status) {
-    case 'processing': return 'Processing...'
-    case 'completed': return 'Completed'
-    case 'failed': return 'Failed'
-    default: return 'Ready'
-  }
-})
-
-const progressColor = computed(() => {
-  return props.status === 'completed' ? 'success' : 'primary'
-})
+const statusText = computed(() => ({
+  processing: 'Đang xử lý...',
+  completed: 'Hoàn thành!',
+  failed: 'Lỗi',
+  idle: 'Sẵn sàng'
+}[props.status] || 'Sẵn sàng'))
 
 const steps = computed(() => {
   const allSteps = [
-    { name: 'Initializing', threshold: 5 },
-    { name: 'Splitting text for audio', threshold: 10 },
-    { name: 'Generating audio chunks', threshold: 20 },
-    { name: 'Merging audio with crossfade', threshold: 40 },
-    { name: 'Splitting text for video', threshold: 45 },
-    { name: 'Generating video prompts', threshold: 50 },
-    { name: 'Generating video segments', threshold: 55 },
-    { name: 'Merging video with transitions', threshold: 80 },
-    { name: 'Composing final video', threshold: 90 },
-    { name: 'Complete', threshold: 100 }
+    { name: 'Khởi tạo', threshold: 3 },
+    { name: 'Gemini AI viết kịch bản', threshold: 8 },
+    { name: 'Tách văn bản audio', threshold: 12 },
+    { name: 'Tạo audio chunks (TTS)', threshold: 20 },
+    { name: 'Tạo phụ đề', threshold: 32 },
+    { name: 'Ghép audio', threshold: 42 },
+    { name: 'Tải stock video (Pexels)', threshold: 50 },
+    { name: 'Ghép video segments', threshold: 82 },
+    { name: 'Compose video + audio', threshold: 90 },
+    { name: 'Lưu vào thư mục', threshold: 98 },
+    { name: 'Hoàn thành', threshold: 100 },
   ]
-
-  return allSteps.map(step => ({
+  return allSteps.map((step, i) => ({
     ...step,
     completed: props.progress > step.threshold,
-    current: props.progress >= step.threshold && props.progress < (allSteps[allSteps.indexOf(step) + 1]?.threshold || 101)
+    current: props.progress >= step.threshold && props.progress < (allSteps[i + 1]?.threshold ?? 101)
   }))
 })
 </script>
+
+<style scoped>
+.progress-tracker { display: flex; flex-direction: column; gap: 14px; }
+
+.status-header { display: flex; align-items: center; justify-content: space-between; }
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.status-chip.idle { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.5); }
+.status-chip.processing { background: rgba(99,179,255,0.15); color: #63b3ff; }
+.status-chip.completed { background: rgba(72,199,142,0.15); color: #48c78e; }
+.status-chip.failed { background: rgba(255,99,99,0.15); color: #ff6363; }
+.status-icon { font-size: 1rem; }
+
+.progress-pct { font-size: 1.3rem; font-weight: 700; color: #63b3ff; }
+
+.progress-bar-wrap {
+  height: 6px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+  background: rgba(255,255,255,0.3);
+}
+.progress-bar-fill.processing { background: linear-gradient(90deg, #63b3ff, #a78bfa); }
+.progress-bar-fill.completed { background: linear-gradient(90deg, #48c78e, #06d6a0); }
+.progress-bar-fill.failed { background: #ff6363; }
+
+.current-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.7);
+  background: rgba(255,255,255,0.04);
+  padding: 10px 14px;
+  border-radius: 8px;
+  border-left: 3px solid #63b3ff;
+}
+
+.error-box {
+  background: rgba(255,99,99,0.1);
+  border: 1px solid rgba(255,99,99,0.2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 0.85rem;
+  color: #ff6363;
+  display: flex;
+  gap: 8px;
+}
+
+.timeline { display: flex; flex-direction: column; gap: 6px; }
+.timeline-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 0.82rem;
+  color: rgba(255,255,255,0.3);
+  transition: color 0.2s;
+}
+.timeline-item.completed { color: rgba(72,199,142,0.8); }
+.timeline-item.current { color: rgba(255,255,255,0.85); }
+
+.timeline-dot {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.timeline-label { flex: 1; }
+
+.spinning { display: inline-block; animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>

@@ -6,10 +6,13 @@ import (
 	"aituber/services"
 	"aituber/utils"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,6 +28,7 @@ type VideoHandler struct {
 	videoService      *services.VideoService
 	stockVideoService *services.StockVideoService
 	composerService   *services.ComposerService
+	geminiService     *services.GeminiService
 
 	// In-memory job tracking
 	jobs    map[string]*models.JobStatus
@@ -35,7 +39,13 @@ type VideoHandler struct {
 func NewVideoHandler(cfg *config.Config) *VideoHandler {
 	// Create API key pools
 	ttsPool := utils.NewAPIKeyPool(cfg.TTSAPIKeys)
-	videoPool := utils.NewAPIKeyPool(cfg.VideoAPIKeys)
+
+	var videoPool *utils.APIKeyPool
+	if len(cfg.VideoAPIKeys) > 0 {
+		videoPool = utils.NewAPIKeyPool(cfg.VideoAPIKeys)
+	} else {
+		videoPool = utils.NewAPIKeyPool([]string{"placeholder"})
+	}
 
 	// Initialize services
 	textProcessor := services.NewTextProcessor(cfg.AudioChunkSize, cfg.VideoSegmentDuration)
@@ -58,8 +68,8 @@ func NewVideoHandler(cfg *config.Config) *VideoHandler {
 	)
 
 	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir)
-
 	composerService := services.NewComposerService(cfg.VideoBitrate)
+	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
 
 	return &VideoHandler{
 		cfg:               cfg,
@@ -68,6 +78,7 @@ func NewVideoHandler(cfg *config.Config) *VideoHandler {
 		videoService:      videoService,
 		stockVideoService: stockVideoService,
 		composerService:   composerService,
+		geminiService:     geminiService,
 		jobs:              make(map[string]*models.JobStatus),
 	}
 }
@@ -80,13 +91,21 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	// Validate input
-	if req.Script == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Script is required"})
+	// Validate platform
+	if req.Platform != "youtube" && req.Platform != "tiktok" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "platform must be 'youtube' or 'tiktok'"})
 		return
 	}
-	if len(req.Script) > h.cfg.MaxTextLength {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Script too long (max %d chars)", h.cfg.MaxTextLength)})
+
+	// Validate topic
+	if req.Topic == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "topic is required"})
+		return
+	}
+
+	// If no pre-written script, we need Gemini to generate one
+	if req.Script == "" && !h.geminiService.HasKeys() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No GEMINI_API_KEYS configured — cannot auto-generate script. Please provide a pre-written script or add GEMINI_API_KEYS to .env"})
 		return
 	}
 
@@ -100,12 +119,23 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 		return
 	}
 
+	// Auto-generate ContentName from topic if not provided
+	if req.ContentName == "" {
+		req.ContentName = slugify(req.Topic)
+	} else {
+		req.ContentName = slugify(req.ContentName)
+	}
+	// Append short timestamp to avoid collisions
+	req.ContentName = fmt.Sprintf("%s-%s", req.ContentName, time.Now().Format("0102-1504"))
+
 	// Generate job ID
 	jobID := uuid.New().String()
 
 	// Create job status
 	job := &models.JobStatus{
 		JobID:       jobID,
+		Platform:    req.Platform,
+		ContentName: req.ContentName,
 		Status:      "processing",
 		Progress:    0,
 		CurrentStep: "Initializing",
@@ -152,6 +182,10 @@ func (h *VideoHandler) GetStatus(c *gin.Context) {
 		resp.VideoURL = &videoURL
 	}
 
+	if job.Status == "completed" && job.SavedPath != "" {
+		resp.SavedPath = &job.SavedPath
+	}
+
 	if job.Error != nil {
 		errMsg := job.Error.Error()
 		resp.Error = &errMsg
@@ -178,11 +212,6 @@ func (h *VideoHandler) DownloadSubtitle(c *gin.Context) {
 		return
 	}
 
-	// Construct path to subtitles.srt
-	// Assuming it's in the same directory as the final video but we need to find the temp dir
-	// Since we don't store temp dir in job status (bad design but let's work around it),
-	// we reconstruct it: tempDir/jobID/output/subtitles.srt
-	// Wait, we need h.cfg.TempDir
 	srtPath := filepath.Join(h.cfg.TempDir, jobID, "output", "subtitles.srt")
 
 	if _, err := os.Stat(srtPath); os.IsNotExist(err) {
@@ -241,7 +270,7 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 		log.Printf("[Job %s] %s (%d%%)", jobID, step, progress)
 	}
 
-	updateStatus("Creating temporary directories", 5)
+	updateStatus("Creating temporary directories", 3)
 
 	// Create temp directories
 	tempDir, err := utils.CreateTempDir(h.cfg.TempDir, jobID)
@@ -250,15 +279,62 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 		return
 	}
 
-	// Step 1: Split text for audio (and subtitles)
-	updateStatus("Splitting text for audio generation", 10)
-	audioChunks := h.textProcessor.SplitForSubtitles(req.Script)
-	log.Printf("[Job %s] Created %d audio chunks (subtitle segments)", jobID, len(audioChunks))
+	// Determine platform orientation
+	orientation := "landscape"
+	if req.Platform == "tiktok" {
+		orientation = "portrait"
+	}
+
+	// ── Step 0: Generate script with Gemini (if not pre-provided) ──
+	var segments []models.VideoSegment
+	script := req.Script
+	if script == "" {
+		updateStatus("Generating script with Gemini AI", 8)
+		var genErr error
+		if req.Platform == "tiktok" {
+			segments, genErr = h.geminiService.GenerateTikTokScript(req.Topic)
+		} else {
+			segments, genErr = h.geminiService.GenerateYouTubeScript(req.Topic)
+		}
+		if genErr != nil {
+			h.markJobFailed(jobID, fmt.Errorf("Gemini script generation failed: %w", genErr))
+			return
+		}
+		log.Printf("[Job %s] Generated script (%d segments) for topic: %q", jobID, len(segments), req.Topic)
+	} else {
+		// Legacy support for direct script input (fallback to simple extraction)
+		if len(script) > h.cfg.MaxTextLength {
+			script = script[:h.cfg.MaxTextLength]
+			log.Printf("[Job %s] Script truncated to %d chars", jobID, h.cfg.MaxTextLength)
+		}
+		chunks := h.textProcessor.SplitForSubtitles(script)
+		for _, chunk := range chunks {
+			segments = append(segments, models.VideoSegment{
+				Text:         chunk,
+				VisualPrompt: h.textProcessor.ExtractKeywordsFromText(chunk, req.StockKeywords),
+			})
+		}
+		log.Printf("[Job %s] Created %d segments from direct script text", jobID, len(segments))
+	}
+
+	// Step 1: Extract text items into flattened array
+	updateStatus("Preparing text for audio generation", 12)
+	var audioTexts []string
+	for _, seg := range segments {
+		if strings.TrimSpace(seg.Text) != "" {
+			audioTexts = append(audioTexts, seg.Text)
+		}
+	}
+
+	if len(audioTexts) == 0 {
+		h.markJobFailed(jobID, fmt.Errorf("no valid script segments extracted to process"))
+		return
+	}
 
 	// Step 2: Generate audio chunks
-	updateStatus(fmt.Sprintf("Generating %d audio chunks", len(audioChunks)), 20)
+	updateStatus(fmt.Sprintf("Generating %d audio chunks", len(audioTexts)), 20)
 	audioPaths, err := h.audioService.GenerateAudioChunks(
-		audioChunks,
+		audioTexts,
 		req.Voice,
 		req.SpeakingSpeed,
 		jobID,
@@ -270,204 +346,140 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 	}
 
 	// Step 2b: Generate Subtitles
-	updateStatus("Generating subtitles", 30)
-	if _, err := h.GenerateSRT(jobID, audioPaths, audioChunks, filepath.Join(tempDir, "output")); err != nil {
+	updateStatus("Generating subtitles", 32)
+	if _, err := h.GenerateSRT(jobID, audioPaths, audioTexts, filepath.Join(tempDir, "output"), req.Platform); err != nil {
 		log.Printf("[Job %s] Failed to generate subtitles: %v", jobID, err)
 		// Don't fail the whole job, just log error
 	}
 
 	// Step 3: Merge audio
-	updateStatus("Merging audio with crossfade", 40)
+	updateStatus("Merging audio", 42)
 	mergedAudioPath := filepath.Join(tempDir, "output", "merged_audio.mp3")
 	if err := h.audioService.MergeAudioFiles(audioPaths, mergedAudioPath); err != nil {
 		h.markJobFailed(jobID, fmt.Errorf("audio merge failed: %w", err))
 		return
 	}
 
-	// Step 4: Video Generation (AI or Stock)
+	// Step 4: Stock video per segment (always stock mode now)
 	var mergedVideoPath string
 
-	if req.VideoSource == "stock" {
-		updateStatus("Preparing per-segment stock videos", 50)
+	updateStatus("Preparing per-segment stock videos", 50)
 
-		// --- Collect real duration of every audio chunk ---
-		realDurations := make([]float64, len(audioPaths))
-		for i, ap := range audioPaths {
-			d, err := utils.GetAudioDuration(ap)
+	// Collect real duration of every audio chunk
+	realDurations := make([]float64, len(audioPaths))
+	for i, ap := range audioPaths {
+		d, err := utils.GetAudioDuration(ap)
+		if err != nil {
+			log.Printf("[Job %s] Could not get duration of chunk %d: %v (using estimate 5s)", jobID, i, err)
+			d = 5.0
+		}
+		realDurations[i] = d
+	}
+
+	// Extract keywords specific per-segment mapped from JSON
+	segKeywords := make([]string, len(segments))
+	for i, seg := range segments {
+		segKeywords[i] = seg.VisualPrompt
+		// Fallback just in case Gemini returned empty query
+		if strings.TrimSpace(segKeywords[i]) == "" {
+			segKeywords[i] = h.textProcessor.ExtractKeywordsFromText(seg.Text, req.StockKeywords)
+		}
+		log.Printf("[Job %s] Segment %d stock video keywords: %q", jobID, i, segKeywords[i])
+	}
+
+	// Fetch + trim a stock video per segment in parallel (max 3 concurrent)
+	segVideoPaths := make([]string, len(segments))
+	segErrors := make([]error, len(segments))
+	sem := make(chan struct{}, 3)
+	var wg sync.WaitGroup
+
+	for i := range segments {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			updateStatus(fmt.Sprintf("Fetching stock video for segment %d/%d", idx+1, len(segments)), 50+idx*30/len(segments))
+
+			vp, err := h.stockVideoService.PrepareSegmentVideo(
+				segKeywords[idx],
+				realDurations[idx],
+				jobID,
+				idx,
+				orientation, // pass platform orientation
+			)
 			if err != nil {
-				log.Printf("[Job %s] Could not get duration of chunk %d: %v (using estimate 5s)", jobID, i, err)
-				d = 5.0
+				segErrors[idx] = err
+				log.Printf("[Job %s] Segment %d video error: %v", jobID, idx, err)
+			} else {
+				segVideoPaths[idx] = vp
 			}
-			realDurations[i] = d
-		}
+		}(i)
+	}
+	wg.Wait()
 
-		// --- Extract per-segment keywords from script chunks ---
-		// styleHint comes from the old StockKeywords field (repurposed)
-		styleHint := req.StockKeywords
-		segKeywords := make([]string, len(audioChunks))
-		for i, chunk := range audioChunks {
-			segKeywords[i] = h.textProcessor.ExtractKeywordsFromText(chunk, styleHint)
-			log.Printf("[Job %s] Segment %d keywords: %q", jobID, i, segKeywords[i])
-		}
-
-		// --- Fetch + trim a stock video per segment in parallel (max 3 concurrent) ---
-		segVideoPaths := make([]string, len(audioChunks))
-		segErrors := make([]error, len(audioChunks))
-		sem := make(chan struct{}, 3) // max 3 Pexels calls at the same time
-		var wg sync.WaitGroup
-
-		for i := range audioChunks {
-			wg.Add(1)
-			go func(idx int) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				updateStatus(fmt.Sprintf("Fetching stock video for segment %d/%d", idx+1, len(audioChunks)), 50+idx*30/len(audioChunks))
-
-				vp, err := h.stockVideoService.PrepareSegmentVideo(
-					segKeywords[idx],
-					realDurations[idx],
-					jobID,
-					idx,
-				)
-				if err != nil {
-					segErrors[idx] = err
-					log.Printf("[Job %s] Segment %d video error: %v", jobID, idx, err)
-				} else {
-					segVideoPaths[idx] = vp
-				}
-			}(i)
-		}
-		wg.Wait()
-
-		// Check for segment errors (allow soft failures – log and skip bad segments)
-		var goodSegPaths []string
-		for i, err := range segErrors {
-			if err != nil {
-				log.Printf("[Job %s] Segment %d failed, skipping from timeline: %v", jobID, i, err)
-				continue
-			}
-			if segVideoPaths[i] != "" {
-				goodSegPaths = append(goodSegPaths, segVideoPaths[i])
-			}
-		}
-
-		if len(goodSegPaths) == 0 {
-			h.markJobFailed(jobID, fmt.Errorf("all segment video fetches failed"))
-			return
-		}
-
-		// --- Concatenate all segment videos into one video track ---
-		updateStatus("Concatenating segment videos", 82)
-		concatVideoPath := filepath.Join(tempDir, "output", "segments_concat.mp4")
-		if err := utils.ConcatVideosNoAudio(goodSegPaths, concatVideoPath); err != nil {
-			h.markJobFailed(jobID, fmt.Errorf("segment video concat failed: %w", err))
-			return
-		}
-		mergedVideoPath = concatVideoPath
-
-	} else {
-		// AI Video Generation Workflow
-		updateStatus("Splitting text for video segments", 45)
-		videoSegments := h.textProcessor.SplitForVideo(req.Script)
-		log.Printf("[Job %s] Created %d video segments", jobID, len(videoSegments))
-
-		// Step 5: Generate video prompts
-		updateStatus("Generating video prompts", 50)
-		prompts, err := h.videoService.GenerateVideoPrompts(videoSegments, req.VideoStyle)
+	// Check for segment errors (allow soft failures)
+	var goodSegPaths []string
+	for i, err := range segErrors {
 		if err != nil {
-			h.markJobFailed(jobID, fmt.Errorf("prompt generation failed: %w", err))
-			return
+			log.Printf("[Job %s] Segment %d failed, skipping from timeline: %v", jobID, i, err)
+			continue
 		}
-
-		// Step 6: Generate videos
-		updateStatus(fmt.Sprintf("Generating %d video segments", len(videoSegments)), 55)
-
-		// Sync video duration with actual audio duration
-		actualAudioDuration, err := utils.GetVideoDuration(mergedAudioPath)
-		if err != nil {
-			log.Printf("[Job %s] Failed to get audio duration for sync: %v", jobID, err)
-		} else {
-			totalEstimatedDuration := 0.0
-			for _, seg := range videoSegments {
-				totalEstimatedDuration += seg.EstimatedDuration
-			}
-			if totalEstimatedDuration > 0 {
-				scaleFactor := actualAudioDuration / totalEstimatedDuration
-				log.Printf("[Job %s] Syncing video duration. Audio: %.2fs, Estimated: %.2fs, Scale: %.4f",
-					jobID, actualAudioDuration, totalEstimatedDuration, scaleFactor)
-				for i := range videoSegments {
-					videoSegments[i].EstimatedDuration *= scaleFactor
-				}
-			}
-		}
-
-		durations := make([]float64, len(videoSegments))
-		for i, seg := range videoSegments {
-			durations[i] = seg.EstimatedDuration
-		}
-
-		videoPaths, err := h.videoService.GenerateVideos(
-			prompts,
-			durations,
-			jobID,
-			h.cfg.MaxConcurrentVideoRequests,
-		)
-		if err != nil {
-			log.Printf("[Job %s] Video generation error: %v", jobID, err)
-			h.markJobFailed(jobID, fmt.Errorf("video generation failed: %w", err))
-			return
-		}
-
-		// Step 7: Merge videos
-		updateStatus("Merging video segments with transitions", 80)
-		mergedVideoPath = filepath.Join(tempDir, "output", "merged_video.mp4")
-		if err := h.videoService.MergeVideos(videoPaths, mergedVideoPath); err != nil {
-			h.markJobFailed(jobID, fmt.Errorf("video merge failed: %w", err))
-			return
+		if segVideoPaths[i] != "" {
+			goodSegPaths = append(goodSegPaths, segVideoPaths[i])
 		}
 	}
 
-	// Step 8: Compose final video
-	updateStatus("Composing final video with audio", 90)
-	finalVideoPath := filepath.Join(tempDir, "output", "final_video.mp4")
-	if err := h.composerService.ComposeVideoWithAudio(mergedVideoPath, mergedAudioPath, finalVideoPath); err != nil {
-		h.markJobFailed(jobID, fmt.Errorf("composition failed: %w", err))
+	if len(goodSegPaths) == 0 {
+		h.markJobFailed(jobID, fmt.Errorf("all segment video fetches failed"))
 		return
 	}
 
-	// Step 9: Add Intro/Outro if they exist
+	// Concatenate all segment videos into one video track
+	updateStatus("Concatenating segment videos", 82)
+	concatVideoPath := filepath.Join(tempDir, "output", "segments_concat.mp4")
+	if err := utils.ConcatVideosNoAudio(goodSegPaths, concatVideoPath); err != nil {
+		h.markJobFailed(jobID, fmt.Errorf("segment video concat failed: %w", err))
+		return
+	}
+	mergedVideoPath = concatVideoPath
+
+	// Step 8: Compose final video
+	updateStatus("Composing final video with audio", 90)
+	composedPath := filepath.Join(tempDir, "output", "final_video_composed.mp4")
+	if err := h.composerService.ComposeVideoWithAudio(mergedVideoPath, mergedAudioPath, composedPath); err != nil {
+		h.markJobFailed(jobID, fmt.Errorf("composition failed: %w", err))
+		return
+	}
+	finalVideoPath := composedPath // start with composed path
+
+	// Step 9: Add Intro/Outro ONLY for youtube
 	updateStatus("Adding intro/outro", 95)
 
-	// Define paths relative to backend execution directory
 	introPath := "static/intro_video.mp4"
 	outroPath := "static/outro_video.mp4"
 
-	concatList := []string{}
+	concatList := h.BuildFinalConcatList(req.Platform, introPath, outroPath, finalVideoPath)
 
-	// Check Intro
-	if _, err := os.Stat(introPath); err == nil {
-		concatList = append(concatList, introPath)
-	}
-
-	// Add Main Video
-	concatList = append(concatList, finalVideoPath)
-
-	// Check Outro
-	if _, err := os.Stat(outroPath); err == nil {
-		concatList = append(concatList, outroPath)
-	}
-
-	// If we have more than just the main video, concat them
 	if len(concatList) > 1 {
 		finalWithIntroOutro := filepath.Join(tempDir, "output", "final_complete.mp4")
 		if err := utils.ConcatVideos(concatList, finalWithIntroOutro); err != nil {
 			h.markJobFailed(jobID, fmt.Errorf("failed to add intro/outro: %w", err))
 			return
 		}
-		// Update final video path
 		finalVideoPath = finalWithIntroOutro
+	}
+
+	// Step 10: Save to ai-videos/{platform}/{content-name}/
+	updateStatus("Saving video to output folder", 98)
+	savedPath, err := h.saveToOutputFolder(finalVideoPath, req.Platform, req.ContentName)
+	if err != nil {
+		// Non-fatal: log but don't fail the job
+		log.Printf("[Job %s] Warning: could not save to output folder: %v", jobID, err)
+		savedPath = ""
+	} else {
+		log.Printf("[Job %s] Video saved to: %s", jobID, savedPath)
 	}
 
 	// Complete
@@ -476,11 +488,88 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 	if job, exists := h.jobs[jobID]; exists {
 		job.Status = "completed"
 		job.VideoPath = finalVideoPath
+		job.SavedPath = savedPath
 		job.UpdatedAt = time.Now()
 	}
 	h.jobsMux.Unlock()
 
 	log.Printf("[Job %s] Video generation completed successfully", jobID)
+}
+
+// saveToOutputFolder copies the final video to ai-videos/{platform}/{contentName}/
+func (h *VideoHandler) saveToOutputFolder(srcPath, platform, contentName string) (string, error) {
+	destDir := filepath.Join(h.cfg.OutputDir, platform, contentName)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create output dir: %w", err)
+	}
+
+	destPath := filepath.Join(destDir, "final_video.mp4")
+
+	// Copy file
+	src, err := os.Open(srcPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open source: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(destPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create dest file: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return "", fmt.Errorf("failed to copy file: %w", err)
+	}
+
+	// Return relative path for display
+	return filepath.Join("ai-videos", platform, contentName, "final_video.mp4"), nil
+}
+
+// BuildFinalConcatList returns the list of video paths to concatenate based on platform.
+// Only "youtube" platform includes the intro and outro if they exist on disk.
+func (h *VideoHandler) BuildFinalConcatList(platform, introPath, outroPath, mainVideoPath string) []string {
+	var concatList []string
+
+	if platform == "youtube" {
+		if _, err := os.Stat(introPath); err == nil {
+			concatList = append(concatList, introPath)
+		}
+	}
+
+	concatList = append(concatList, mainVideoPath)
+
+	if platform == "youtube" {
+		if _, err := os.Stat(outroPath); err == nil {
+			concatList = append(concatList, outroPath)
+		}
+	}
+
+	return concatList
+}
+
+// slugify converts a string to a URL-friendly slug
+func slugify(s string) string {
+	// Lowercase
+	s = strings.ToLower(s)
+	// Replace spaces with hyphens
+	s = strings.ReplaceAll(s, " ", "-")
+	// Remove non-alphanumeric chars except hyphens
+	re := regexp.MustCompile(`[^a-z0-9\-]`)
+	s = re.ReplaceAllString(s, "")
+	// Collapse multiple hyphens
+	re2 := regexp.MustCompile(`-+`)
+	s = re2.ReplaceAllString(s, "-")
+	// Trim hyphens from ends
+	s = strings.Trim(s, "-")
+	// Limit length
+	if len(s) > 60 {
+		s = s[:60]
+	}
+	if s == "" {
+		s = "content"
+	}
+	return s
 }
 
 // markJobFailed marks a job as failed
@@ -496,7 +585,7 @@ func (h *VideoHandler) markJobFailed(jobID string, err error) {
 }
 
 // GenerateSRT generates SRT subtitle file from audio chunks
-func (h *VideoHandler) GenerateSRT(jobID string, audioPaths []string, texts []string, outputDir string) (string, error) {
+func (h *VideoHandler) GenerateSRT(jobID string, audioPaths []string, texts []string, outputDir string, platform string) (string, error) {
 	srtPath := filepath.Join(outputDir, "subtitles.srt")
 	file, err := os.Create(srtPath)
 	if err != nil {
@@ -504,15 +593,17 @@ func (h *VideoHandler) GenerateSRT(jobID string, audioPaths []string, texts []st
 	}
 	defer file.Close()
 
-	// Calculate initial offset (Intro duration)
+	// Calculate initial offset (Intro duration ONLY on YouTube)
 	currentOffset := 0.0
-	introPath := "static/intro_video.mp4"
-	if _, err := os.Stat(introPath); err == nil {
-		duration, err := utils.GetVideoDuration(introPath)
-		if err == nil {
-			currentOffset = duration
-		} else {
-			log.Printf("Failed to get intro duration: %v", err)
+	if platform == "youtube" {
+		introPath := "static/intro_video.mp4"
+		if _, err := os.Stat(introPath); err == nil {
+			duration, err := utils.GetVideoDuration(introPath)
+			if err == nil {
+				currentOffset = duration
+			} else {
+				log.Printf("Failed to get intro duration: %v", err)
+			}
 		}
 	}
 

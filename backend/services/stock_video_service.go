@@ -53,7 +53,7 @@ type PexelsVideoResponse struct {
 // PrepareStockVideo searches, downloads multiple short videos, and merges them to match duration
 func (sv *StockVideoService) PrepareStockVideo(keywords string, targetDuration float64, jobID string) (string, error) {
 	// 1. Search for multiple short videos (5-10s)
-	videoURLs, err := sv.searchMultipleVideos(keywords, targetDuration)
+	videoURLs, err := sv.searchMultipleVideos(keywords, targetDuration, "landscape")
 	if err != nil {
 		return "", fmt.Errorf("failed to search videos: %w", err)
 	}
@@ -106,25 +106,36 @@ func (sv *StockVideoService) PrepareStockVideo(keywords string, targetDuration f
 }
 
 // PrepareSegmentVideo fetches stock video for a SINGLE audio segment (by index).
-// It searches Pexels with `keywords`, downloads videos one-by-one until their
-// combined duration exceeds `audioDuration`, concatenates them, and trims to
-// exactly `audioDuration`. Returns the path to the ready segment video.
-func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration float64, jobID string, segIndex int) (string, error) {
+// orientation: "landscape" (YouTube, 1920x1080) or "portrait" (TikTok, 1080x1920)
+func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration float64, jobID string, segIndex int, orientation string) (string, error) {
+	if orientation == "" {
+		orientation = "landscape"
+	}
+
 	segDir := filepath.Join(sv.tempDir, jobID, "stock", fmt.Sprintf("seg_%03d", segIndex))
 	if err := os.MkdirAll(segDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create segment dir: %w", err)
 	}
 
-	fmt.Printf("[SegVideo %d] Searching Pexels for: %q (need %.2fs)\n", segIndex, keywords, audioDuration)
+	fmt.Printf("[SegVideo %d] Searching Pexels for: %q (need %.2fs, orientation: %s)\n", segIndex, keywords, audioDuration, orientation)
 
 	// 1. Search Pexels – fetch up to 15 candidates per query
-	videoInfos, err := sv.searchVideoInfos(keywords, 15)
+	videoInfos, err := sv.searchVideoInfos(keywords, 15, orientation)
 	if err != nil || len(videoInfos) == 0 {
-		// Fallback: try generic "abstract" when keyword-specific search fails
-		fmt.Printf("[SegVideo %d] Primary search failed (%v), trying fallback 'abstract'\n", segIndex, err)
-		videoInfos, err = sv.searchVideoInfos("abstract nature", 15)
-		if err != nil {
-			return "", fmt.Errorf("pexels search failed even with fallback: %w", err)
+		// Fallback: try generic keyword with same orientation
+		fmt.Printf("[SegVideo %d] Primary search failed (%v), trying fallback\n", segIndex, err)
+		fallbackKw := "abstract nature"
+		if orientation == "portrait" {
+			fallbackKw = "abstract vertical"
+		}
+		videoInfos, err = sv.searchVideoInfos(fallbackKw, 15, orientation)
+		if err != nil || len(videoInfos) == 0 {
+			// Last resort: try landscape orientation as fallback for portrait
+			fmt.Printf("[SegVideo %d] Fallback also failed, trying landscape fallback\n", segIndex)
+			videoInfos, err = sv.searchVideoInfos("abstract nature", 15, "landscape")
+			if err != nil {
+				return "", fmt.Errorf("pexels search failed even with fallback: %w", err)
+			}
 		}
 	}
 
@@ -181,12 +192,21 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 		}
 	}
 
-	// 4. Normalize + trim to exact audioDuration
+	// 4. Normalize + trim to exact audioDuration — resolution depends on platform orientation
 	trimmedPath := filepath.Join(segDir, "segment.mp4")
+	var vfFilter string
+	if orientation == "portrait" {
+		// TikTok: 1080x1920 (9:16 portrait)
+		vfFilter = "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
+	} else {
+		// YouTube: 1920x1080 (16:9 landscape)
+		vfFilter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
+	}
+
 	if err := utils.RunFFmpegCommand([]string{
 		"-i", concatPath,
 		"-t", fmt.Sprintf("%.3f", audioDuration),
-		"-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
+		"-vf", vfFilter,
 		"-c:v", "libx264",
 		"-preset", "fast",
 		"-crf", "23",
@@ -196,7 +216,7 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 		return "", fmt.Errorf("segment %d normalize+trim failed: %w", segIndex, err)
 	}
 
-	fmt.Printf("[SegVideo %d] Ready: %s (%.2fs)\n", segIndex, trimmedPath, audioDuration)
+	fmt.Printf("[SegVideo %d] Ready: %s (%.2fs, %s)\n", segIndex, trimmedPath, audioDuration, orientation)
 	return trimmedPath, nil
 }
 
@@ -207,12 +227,13 @@ type videoInfo struct {
 }
 
 // searchVideoInfos searches Pexels and returns ordered list of (link, duration) for the best-quality files.
-func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int) ([]videoInfo, error) {
+// orientation: "landscape", "portrait", or "square"
+func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int, orientation string) ([]videoInfo, error) {
 	baseURL := "https://api.pexels.com/videos/search"
 	params := url.Values{}
 	params.Add("query", keywords)
 	params.Add("per_page", fmt.Sprintf("%d", perPage))
-	params.Add("orientation", "landscape")
+	params.Add("orientation", orientation)
 
 	req, err := http.NewRequest("GET", baseURL+"?"+params.Encode(), nil)
 	if err != nil {
@@ -220,15 +241,42 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int) ([]v
 	}
 	req.Header.Set("Authorization", sv.apiKey)
 
-	resp, err := sv.httpClient.Do(req)
-	if err != nil {
-		return nil, err
+	var resp *http.Response
+	var lastErr error
+	maxRetries := 3
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt*2) * time.Second)
+		}
+
+		resp, err = sv.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("pexels API rate limited (429)")
+			time.Sleep(3 * time.Second) // Extra backoff
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("pexels API returned status %d", resp.StatusCode)
+			continue
+		}
+
+		// Success
+		break
+	}
+
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("pexels search failed after %d retries: %v", maxRetries, lastErr)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pexels API returned status %d", resp.StatusCode)
-	}
 
 	var result PexelsVideoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -243,23 +291,45 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int) ([]v
 		bestLink, bestScore := "", 0
 		for _, file := range video.VideoFiles {
 			score := 0
-			ar := 0.0
-			if file.Height > 0 {
-				ar = float64(file.Width) / float64(file.Height)
-			}
-			is169 := ar > 1.77 && ar < 1.79
-			if file.Width == 1920 && file.Height == 1080 {
-				score = 10000
-			} else if is169 && file.Width >= 1280 {
-				score = 5000
-			} else if is169 {
-				score = 1000
-			} else if file.Quality == "hd" {
-				score = 500
+			if orientation == "portrait" {
+				// For portrait: prefer 1080x1920 or tall videos
+				ar := 0.0
+				if file.Width > 0 {
+					ar = float64(file.Height) / float64(file.Width)
+				}
+				isPortrait916 := ar > 1.77 && ar < 1.79
+				if file.Width == 1080 && file.Height == 1920 {
+					score = 10000
+				} else if isPortrait916 && file.Height >= 1280 {
+					score = 5000
+				} else if isPortrait916 {
+					score = 1000
+				} else if file.Quality == "hd" {
+					score = 500
+				} else {
+					score = 1
+				}
+				score += file.Height // taller = better for portrait
 			} else {
-				score = 1
+				// For landscape: prefer 1920x1080
+				ar := 0.0
+				if file.Height > 0 {
+					ar = float64(file.Width) / float64(file.Height)
+				}
+				is169 := ar > 1.77 && ar < 1.79
+				if file.Width == 1920 && file.Height == 1080 {
+					score = 10000
+				} else if is169 && file.Width >= 1280 {
+					score = 5000
+				} else if is169 {
+					score = 1000
+				} else if file.Quality == "hd" {
+					score = 500
+				} else {
+					score = 1
+				}
+				score += file.Width
 			}
-			score += file.Width
 			if score > bestScore {
 				bestScore = score
 				bestLink = file.Link
@@ -273,12 +343,12 @@ func (sv *StockVideoService) searchVideoInfos(keywords string, perPage int) ([]v
 }
 
 // searchMultipleVideos searches Pexels for multiple short videos (5-10s) matching keywords
-func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuration float64) ([]string, error) {
+func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuration float64, orientation string) ([]string, error) {
 	baseURL := "https://api.pexels.com/videos/search"
 	params := url.Values{}
 	params.Add("query", keywords)
 	params.Add("per_page", "100") // Get more results to filter
-	params.Add("orientation", "landscape")
+	params.Add("orientation", orientation)
 
 	req, err := http.NewRequest("GET", baseURL+"?"+params.Encode(), nil)
 	if err != nil {
@@ -286,15 +356,42 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 	}
 	req.Header.Set("Authorization", sv.apiKey)
 
-	resp, err := sv.httpClient.Do(req)
-	if err != nil {
-		return nil, err
+	var resp *http.Response
+	var lastErr error
+	maxRetries := 3
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt*2) * time.Second)
+		}
+
+		resp, err = sv.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("pexels API rate limited (429)")
+			time.Sleep(3 * time.Second) // Extra backoff
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("pexels API returned status %d", resp.StatusCode)
+			continue
+		}
+
+		// Success
+		break
+	}
+
+	if resp == nil || resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("pexels search failed after %d retries: %v", maxRetries, lastErr)
 	}
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("pexels API returned status %d", resp.StatusCode)
-	}
 
 	var result PexelsVideoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -314,36 +411,48 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 	for _, video := range result.Videos {
 		// Only accept videos between 5-15 seconds (flexible range)
 		if video.Duration >= 5 && video.Duration <= 35 {
-			// Find best quality link (Prioritize 1080p > 16:9 > HD)
 			var bestLink string
 			var bestScore int
 
 			for _, file := range video.VideoFiles {
 				currentScore := 0
-
-				// Calculate aspect ratio
 				var aspectRatio float64
-				if file.Height > 0 {
-					aspectRatio = float64(file.Width) / float64(file.Height)
-				}
 
-				// Check for 16:9 (approx 1.77)
-				is16_9 := aspectRatio > 1.77 && aspectRatio < 1.78
-
-				if file.Width == 1920 && file.Height == 1080 {
-					currentScore = 10000 // Perfect 1080p match
-				} else if is16_9 && file.Width >= 1280 {
-					currentScore = 5000 // 720p+ 16:9
-				} else if is16_9 {
-					currentScore = 1000 // Any 16:9
-				} else if file.Quality == "hd" {
-					currentScore = 500 // Non-16:9 HD
+				if orientation == "portrait" {
+					if file.Width > 0 {
+						aspectRatio = float64(file.Height) / float64(file.Width)
+					}
+					isPortrait916 := aspectRatio > 1.77 && aspectRatio < 1.78
+					if file.Width == 1080 && file.Height == 1920 {
+						currentScore = 10000
+					} else if isPortrait916 && file.Height >= 1280 {
+						currentScore = 5000
+					} else if isPortrait916 {
+						currentScore = 1000
+					} else if file.Quality == "hd" {
+						currentScore = 500
+					} else {
+						currentScore = 1
+					}
+					currentScore += file.Height
 				} else {
-					currentScore = 1 // Fallback
+					if file.Height > 0 {
+						aspectRatio = float64(file.Width) / float64(file.Height)
+					}
+					is16_9 := aspectRatio > 1.77 && aspectRatio < 1.78
+					if file.Width == 1920 && file.Height == 1080 {
+						currentScore = 10000
+					} else if is16_9 && file.Width >= 1280 {
+						currentScore = 5000
+					} else if is16_9 {
+						currentScore = 1000
+					} else if file.Quality == "hd" {
+						currentScore = 500
+					} else {
+						currentScore = 1
+					}
+					currentScore += file.Width
 				}
-
-				// Add width to score to prefer higher resolution among same category
-				currentScore += file.Width
 
 				if currentScore > bestScore {
 					bestScore = currentScore
@@ -361,24 +470,19 @@ func (sv *StockVideoService) searchMultipleVideos(keywords string, targetDuratio
 	}
 
 	if len(shortVideos) == 0 {
-		return nil, fmt.Errorf("no short videos (5-15s) found for keywords: %s", keywords)
+		return nil, fmt.Errorf("no short videos (5-35s) found for keywords: %s", keywords)
 	}
 
-	// Calculate how many videos we need to cover target duration
 	var selectedURLs []string
 	var totalDuration float64
 
-	// Pick videos in order (most relevant first, not random)
 	for _, video := range shortVideos {
 		selectedURLs = append(selectedURLs, video.Link)
 		totalDuration += float64(video.Duration)
 
-		// Stop when we have enough duration (+ buffer)
 		if totalDuration >= targetDuration {
 			break
 		}
-
-		// Limit to max 100 videos to avoid too many downloads
 		if len(selectedURLs) >= 100 {
 			break
 		}
@@ -407,7 +511,6 @@ func (sv *StockVideoService) downloadVideo(url, path string) error {
 			time.Sleep(time.Duration(attempt*2) * time.Second)
 		}
 
-		// Create request with context is better, but client timeout handles it globally
 		resp, err := sv.httpClient.Get(url)
 		if err != nil {
 			lastErr = err
@@ -520,7 +623,6 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 	currentEffective := currentRawDuration - float64(currentCount-1)*transitionDuration
 
 	// Add 5 seconds buffer to target duration to ensure video is always longer than audio
-	// efficiently handling potential FFmpeg timing mismatches or decoding delays
 	safeTargetDuration := targetDuration + 5.0
 
 	if currentEffective < safeTargetDuration {
@@ -531,7 +633,6 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 
 		// Keep adding random videos until we have enough duration
 		for currentEffective < safeTargetDuration {
-			// Pick a truly random video from the downloaded ones
 			randomIdx := rand.Intn(len(inputPaths))
 			finalInputPaths = append(finalInputPaths, inputPaths[randomIdx])
 
@@ -539,10 +640,8 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 			currentRawDuration += duration
 			currentCount++
 
-			// Recalculate effective duration
 			currentEffective = currentRawDuration - float64(currentCount-1)*transitionDuration
 
-			// Limit to avoid infinite loops
 			if len(finalInputPaths) > 100 {
 				break
 			}
@@ -551,7 +650,6 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 	}
 
 	// Use FFmpeg's MergeVideosWithTransition utility
-	// This merges with fade transitions
 	mergedPath := filepath.Join(filepath.Dir(outputPath), "merged_temp.mp4")
 
 	err := utils.MergeVideosWithTransition(
@@ -565,7 +663,6 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 		return fmt.Errorf("failed to merge videos: %w", err)
 	}
 
-	// Trim to target duration + 2s buffer (let -shortest in next step handle the exact cut)
-	// This prevents video being slightly shorter than audio due to frame boundaries
+	// Trim to target duration + 2s buffer
 	return utils.TrimVideo(mergedPath, outputPath, targetDuration+2.0)
 }
