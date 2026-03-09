@@ -41,8 +41,8 @@ type Config struct {
 	VideoTransitionType     string
 	VideoTransitionDuration float64
 
-	PexelsAPIKey     string
-	HuggingFaceToken string
+	PexelsAPIKey      string
+	HuggingFaceTokens []string
 
 	// Rate Limiting
 	MaxConcurrentTTSRequests   int
@@ -82,8 +82,8 @@ func LoadConfig() (*Config, error) {
 		VideoTransitionType:     getEnv("VIDEO_TRANSITION_TYPE", "fade"),
 		VideoTransitionDuration: getEnvAsFloat("VIDEO_TRANSITION_DURATION", 0.5),
 
-		PexelsAPIKey:     getEnv("PEXELS_API_KEY", ""),
-		HuggingFaceToken: getEnv("HF_TOKEN", ""),
+		PexelsAPIKey:      getEnv("PEXELS_API_KEY", ""),
+		HuggingFaceTokens: parseAPIKeys(getEnv("HF_TOKEN", "")),
 
 		// Rate limiting
 		MaxConcurrentTTSRequests:   getEnvAsInt("MAX_CONCURRENT_TTS_REQUESTS", 1),

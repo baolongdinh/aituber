@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
+
 	"sync"
 	"time"
 )
@@ -139,86 +139,55 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 	trackIface, _ := sv.jobMediaTrack.LoadOrStore(jobID, &sync.Map{})
 	usedMedia := trackIface.(*sync.Map)
 
-	// 1. Search Pexels – fetch up to 15 candidates per query
+	// 1. Search Pexels – fetch up to 15 candidates per query (phrase search only)
 	videoInfos, err := sv.searchVideoInfos(keywords, 15, orientation, usedMedia)
 	if err != nil || len(videoInfos) == 0 {
-		// Fallback tier 1a: Split keywords and search word-by-word
-		fmt.Printf("[SegVideo %d] Primary search failed (%v), trying individual words...\n", segIndex, err)
-		words := strings.Fields(keywords)
-		for _, word := range words {
-			if len(word) > 2 { // skip tiny words like "a", "of", "in", "to"
-				fmt.Printf("[SegVideo %d] Trying individual word: %q\n", segIndex, word)
-				videoInfos, err = sv.searchVideoInfos(word, 15, orientation, usedMedia)
-				if err == nil && len(videoInfos) > 0 {
-					fmt.Printf("[SegVideo %d] Found %d results for word: %q\n", segIndex, len(videoInfos), word)
-					break
+		// Pexels returned nothing → fall back to AI image generation immediately
+		fmt.Printf("[SegVideo %d] Pexels search failed (%v), generating AI image...\n", segIndex, err)
+
+		// Make the AI prompt unique per usage
+		uniqueKeyword := keywords
+		if _, loaded := usedMedia.LoadOrStore("ai_kw_"+keywords, true); loaded {
+			uniqueKeyword = keywords + " alternate dramatic angle"
+			usedMedia.Store("ai_kw_"+uniqueKeyword, true)
+		}
+
+		imgPath := filepath.Join(segDir, "fallback.png")
+		fallbackVideoPath := filepath.Join(segDir, "fallback_animated.mp4")
+
+		// Tier 1: HuggingFace FLUX.1-schnell (cheaper, faster)
+		if sv.hfService != nil && sv.hfService.HasToken() {
+			if imgBytes, imgErr := sv.hfService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
+				if os.WriteFile(imgPath, imgBytes, 0644) == nil {
+					if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
+						fmt.Printf("[SegVideo %d] HuggingFace FLUX image gen succeeded!\n", segIndex)
+						return fallbackVideoPath, nil
+					} else {
+						fmt.Printf("[SegVideo %d] HuggingFace FLUX video conversion failed: %v\n", segIndex, err)
+					}
 				}
+			} else {
+				fmt.Printf("[SegVideo %d] HuggingFace FLUX failed: %v\n", segIndex, imgErr)
 			}
 		}
 
-		if err != nil || len(videoInfos) == 0 {
-			// Fallback tier 1b: try generic keyword with same orientation
-			fmt.Printf("[SegVideo %d] Single word search failed, trying generic fallback...\n", segIndex)
-			fallbackKw := "abstract nature"
-			if orientation == "portrait" {
-				fallbackKw = "abstract vertical"
-			}
-			videoInfos, err = sv.searchVideoInfos(fallbackKw, 15, orientation, usedMedia)
-			if err != nil || len(videoInfos) == 0 {
-				// Fallback tier 2: landscape orientation
-				fmt.Printf("[SegVideo %d] Fallback also failed, trying landscape fallback\n", segIndex)
-				videoInfos, err = sv.searchVideoInfos("abstract nature", 15, "landscape", usedMedia)
-				if err != nil || len(videoInfos) == 0 {
-					// Fallback tier 3 & 4: AI image generation → Ken Burns animated video
-
-					// Make the AI prompt unique
-					uniqueKeyword := keywords
-					if _, loaded := usedMedia.LoadOrStore("ai_kw_"+keywords, true); loaded {
-						// Already used this keyword, salt it so the AI generates a different image
-						uniqueKeyword = keywords + " alternate dramatic angle"
-						usedMedia.Store("ai_kw_"+uniqueKeyword, true)
+		// Tier 2: Gemini Image (backup)
+		if sv.geminiService != nil && sv.geminiService.HasKeys() {
+			if imgBytes, imgErr := sv.geminiService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
+				if os.WriteFile(imgPath, imgBytes, 0644) == nil {
+					if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
+						fmt.Printf("[SegVideo %d] Gemini Imagen image gen succeeded!\n", segIndex)
+						return fallbackVideoPath, nil
+					} else {
+						fmt.Printf("[SegVideo %d] Gemini Imagen video conversion failed: %v\n", segIndex, err)
 					}
-
-					imgPath := filepath.Join(segDir, "fallback.png")
-					fallbackVideoPath := filepath.Join(segDir, "fallback_animated.mp4")
-
-					// Tier 3: HuggingFace FLUX.1-schnell (cheaper, faster)
-					if sv.hfService != nil && sv.hfService.HasToken() {
-						if imgBytes, imgErr := sv.hfService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
-							if os.WriteFile(imgPath, imgBytes, 0644) == nil {
-								if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
-									fmt.Printf("[SegVideo %d] HuggingFace FLUX fallback succeeded!\n", segIndex)
-									return fallbackVideoPath, nil
-								} else {
-									fmt.Printf("[SegVideo %d] HuggingFace FLUX video conversion failed: %v\n", segIndex, err)
-								}
-							}
-						} else {
-							fmt.Printf("[SegVideo %d] HuggingFace FLUX failed: %v\n", segIndex, imgErr)
-						}
-					}
-
-					// Tier 4: Gemini 2.5 Flash Image (backup)
-					if sv.geminiService != nil && sv.geminiService.HasKeys() {
-						if imgBytes, imgErr := sv.geminiService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
-							if os.WriteFile(imgPath, imgBytes, 0644) == nil {
-								if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
-									fmt.Printf("[SegVideo %d] Gemini Imagen fallback succeeded!\n", segIndex)
-									return fallbackVideoPath, nil
-								} else {
-									fmt.Printf("[SegVideo %d] Gemini Imagen video conversion failed: %v\n", segIndex, err)
-								}
-							}
-						} else {
-							fmt.Printf("[SegVideo %d] Gemini Imagen failed: %v\n", segIndex, imgErr)
-						}
-					}
-
-					return "", fmt.Errorf("all fallbacks exhausted for segment %d (keywords: %q): %w", segIndex, keywords, err)
 				}
-
+			} else {
+				fmt.Printf("[SegVideo %d] Gemini Imagen failed: %v\n", segIndex, imgErr)
 			}
 		}
+
+		return "", fmt.Errorf("segment %d: Pexels and AI image gen both failed for keywords %q", segIndex, keywords)
 	}
 
 	// 2. Greedily download videos until we have enough duration

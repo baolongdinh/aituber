@@ -68,7 +68,7 @@ func NewVideoHandler(cfg *config.Config) *VideoHandler {
 	)
 
 	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
-	hfService := services.NewHuggingFaceService(cfg.HuggingFaceToken)
+	hfService := services.NewHuggingFaceService(cfg.HuggingFaceTokens)
 	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, geminiService, hfService)
 	composerService := services.NewComposerService(cfg.VideoBitrate)
 
