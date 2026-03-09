@@ -278,10 +278,10 @@ func TestExtractKeywordsFromText(t *testing.T) {
 		mustNotBe   string // result must NOT equal this
 	}{
 		{
-			name:        "Empty text with no hint -> abstract",
+			name:        "Empty text with no hint -> thiên nhiên",
 			text:        "",
 			styleHint:   "",
-			mustContain: []string{"abstract"},
+			mustContain: []string{"thiên nhiên"},
 		},
 		{
 			name:        "Empty text with style hint -> hint returned",
@@ -294,14 +294,14 @@ func TestExtractKeywordsFromText(t *testing.T) {
 			text:        "Trí tuệ nhân tạo đang thay đổi thế giới của chúng ta.",
 			styleHint:   "",
 			mustContain: []string{"trí", "tuệ", "nhân", "tạo"}, // meaningful words
-			mustNotBe:   "abstract",
+			mustNotBe:   "thiên nhiên",
 		},
 		{
 			name:        "English – stop words stripped",
 			text:        "Artificial intelligence is changing the world very fast.",
 			styleHint:   "",
-			mustContain: []string{"artificial", "intelligence", "changing", "world", "fast"},
-			mustNotBe:   "abstract",
+			mustContain: []string{"artificial", "intelligence", "changing", "world"},
+			mustNotBe:   "thiên nhiên",
 		},
 		{
 			name:        "Style hint appended to content keywords",
@@ -316,10 +316,22 @@ func TestExtractKeywordsFromText(t *testing.T) {
 			mustContain: []string{"mèo"},
 		},
 		{
-			name:        "All stop words -> abstract fallback",
+			name:        "All stop words -> thiên nhiên fallback",
 			text:        "và hoặc nhưng vì nên thì mà",
 			styleHint:   "",
-			mustContain: []string{"abstract"},
+			mustContain: []string{"thiên nhiên"},
+		},
+		{
+			name:        "Narrative blacklist words stripped",
+			text:        "Chào mừng các bạn đến với video clip hôm nay trên kênh này",
+			styleHint:   "",
+			mustContain: []string{"thiên nhiên"}, // All narrative words should be stripped
+		},
+		{
+			name:        "Mixed content with narrative noise",
+			text:        "Trong video hôm nay chúng ta sẽ ngắm nhìn thiên nhiên hùng vĩ",
+			styleHint:   "",
+			mustContain: []string{"ngắm", "nhìn", "thiên", "nhiên"},
 		},
 	}
 
