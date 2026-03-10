@@ -20,9 +20,10 @@ type Config struct {
 	OutputDir string
 
 	// API Keys Pool
-	TTSAPIKeys    []string
-	VideoAPIKeys  []string
-	GeminiAPIKeys []string
+	TTSAPIKeys       []string
+	ElevenLabsAPIKey string
+	VideoAPIKeys     []string
+	GeminiAPIKeys    []string
 
 	// Processing Settings
 	MaxTextLength        int
@@ -61,14 +62,15 @@ func LoadConfig() (*Config, error) {
 		OutputDir: getEnv("OUTPUT_DIR", "../ai-videos"),
 
 		// Parse API keys
-		TTSAPIKeys:    parseAPIKeys(getEnv("TTS_API_KEYS", "")),
-		VideoAPIKeys:  parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
-		GeminiAPIKeys: parseAPIKeys(getEnv("GEMINI_API_KEYS", "")),
+		TTSAPIKeys:       parseAPIKeys(getEnv("TTS_API_KEYS", "")),
+		ElevenLabsAPIKey: getEnv("ELEVENLABS_API_KEY", ""),
+		VideoAPIKeys:     parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
+		GeminiAPIKeys:    parseAPIKeys(getEnv("GEMINI_API_KEYS", "")),
 
 		// Processing settings
 		MaxTextLength:        getEnvAsInt("MAX_TEXT_LENGTH", 50000),
-		AudioChunkSize:       getEnvAsInt("AUDIO_CHUNK_SIZE", 4500),
-		VideoSegmentDuration: getEnvAsFloat("VIDEO_SEGMENT_DURATION", 5.5),
+		AudioChunkSize:       getEnvAsInt("AUDIO_CHUNK_SIZE", 8000),
+		VideoSegmentDuration: getEnvAsFloat("VIDEO_SEGMENT_DURATION", 10.0),
 
 		// Quality settings
 		AudioSampleRate: getEnvAsInt("AUDIO_SAMPLE_RATE", 44100),

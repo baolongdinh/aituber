@@ -31,6 +31,17 @@ var hfModels = []string{
 	"black-forest-labs/FLUX.1-schnell",            // fast FLUX fallback
 }
 
+// t2vModels is the ordered list of text-to-video models to try.
+// Ordered by quality and recency as requested.
+var t2vModels = []string{
+	"tencent/HunyuanVideo-1.5", // top-tier, very recent
+	"Wan-AI/Wan2.2-T2V-A14B",   // high quality 14B
+	"genmo/mochi-1-preview",    // very popular, high quality
+	"Wan-AI/Wan2.2-TI2V-5B",    // high quality, slightly smaller
+	"zai-org/CogVideoX-5b",     // stable fallback
+	"Wan-AI/Wan2.1-T2V-14B",    // older but very reliable
+}
+
 const hfMaxRetriesPerModel = 3
 
 // NewHuggingFaceService creates a new HuggingFace service.
@@ -58,23 +69,136 @@ func (hf *HuggingFaceService) nextToken() string {
 // GenerateImageForKeyword tries each model in hfModels (up to hfMaxRetriesPerModel retries each)
 // until an image is successfully generated. Tokens are rotated in round-robin per request.
 // Returns raw PNG/JPEG bytes ready to be saved and animated by FFmpeg.
-func (hf *HuggingFaceService) GenerateImageForKeyword(keyword, orientation string) ([]byte, error) {
+// GenerateVideoForPrompt uses HuggingFace Inference Providers (e.g., fal-ai) to generate a video clip.
+// provider: "fal-ai" (recommended)
+// model: "genmo/mochi-1-preview" or "Wan-AI/Wan2.2-T2V-A14B"
+func (hf *HuggingFaceService) GenerateVideoForPrompt(prompt, model, provider string) ([]byte, error) {
 	if !hf.HasToken() {
 		return nil, fmt.Errorf("HuggingFace token not configured")
 	}
 
-	// Craft a cinematic B-roll prompt
+	// Determine models to try
+	modelsToTry := t2vModels
+	if model != "" {
+		// If a specific model is requested, try it first, then fall back to the others
+		modelsToTry = append([]string{model}, t2vModels...)
+	}
+
+	var lastErr error
+	for _, currentModel := range modelsToTry {
+		apiURL := fmt.Sprintf("https://router.huggingface.co/hf-inference/models/%s", currentModel)
+
+		reqBody := map[string]interface{}{
+			"inputs":   prompt,
+			"provider": provider,
+		}
+
+		bodyBytes, err := json.Marshal(reqBody)
+		if err != nil {
+			lastErr = fmt.Errorf("model %s: marshal error: %w", currentModel, err)
+			continue
+		}
+
+		for attempt := 1; attempt <= hfMaxRetriesPerModel; attempt++ {
+			if attempt > 1 {
+				backoff := time.Duration(attempt) * 5 * time.Second
+				log.Printf("[HuggingFace T2V] model=%s attempt=%d/%d retrying in %s...", currentModel, attempt, hfMaxRetriesPerModel, backoff)
+				time.Sleep(backoff)
+			}
+
+			token := hf.nextToken()
+			log.Printf("[HuggingFace T2V] model=%s attempt=%d/%d generating video for: %q", currentModel, attempt, hfMaxRetriesPerModel, prompt)
+
+			req, err := http.NewRequest("POST", apiURL, bytes.NewReader(bodyBytes))
+			if err != nil {
+				lastErr = fmt.Errorf("model %s: create request: %w", currentModel, err)
+				continue
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("x-use-cache", "false")
+
+			resp, err := hf.httpClient.Do(req)
+			if err != nil {
+				lastErr = fmt.Errorf("model %s: request failed: %w", currentModel, err)
+				continue
+			}
+
+			body, readErr := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if readErr != nil {
+				lastErr = fmt.Errorf("model %s: read response: %w", currentModel, readErr)
+				continue
+			}
+
+			if resp.StatusCode == http.StatusOK {
+				// Some providers might return JSON with a URL instead of binary.
+				if json.Valid(body) && bytes.Contains(body, []byte(`"url"`)) {
+					var result struct {
+						URL string `json:"url"`
+					}
+					if err := json.Unmarshal(body, &result); err == nil && result.URL != "" {
+						log.Printf("[HuggingFace T2V] Got video URL: %s, downloading...", result.URL)
+						return hf.downloadFile(result.URL)
+					}
+				}
+
+				log.Printf("[HuggingFace T2V] model=%s Success (%d bytes)", currentModel, len(body))
+				return body, nil
+			}
+
+			lastErr = fmt.Errorf("model %s status %d: %s", currentModel, resp.StatusCode, string(body))
+			log.Printf("[HuggingFace T2V] Error: %v", lastErr)
+
+			// Non-503/serverless-loading errors usually won't succeed on retry
+			if resp.StatusCode != http.StatusServiceUnavailable && resp.StatusCode != http.StatusTooManyRequests {
+				break
+			}
+		}
+		log.Printf("[HuggingFace T2V] model=%s exhausted, trying next fallback model...", currentModel)
+	}
+
+	return nil, fmt.Errorf("all T2V models failed: %w", lastErr)
+}
+
+func (hf *HuggingFaceService) downloadFile(url string) ([]byte, error) {
+	resp, err := hf.httpClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// GenerateImageForKeyword generates a cinematic image using HuggingFace diffusion models.
+// visualDesc: optional cinematic scene description from the video script (preferred over keyword when non-empty).
+func (hf *HuggingFaceService) GenerateImageForKeyword(keyword, visualDesc, orientation string) ([]byte, error) {
+	if !hf.HasToken() {
+		return nil, fmt.Errorf("HuggingFace token not configured")
+	}
+
+	// Orientation hint to guide composition
 	orientHint := "wide cinematic landscape composition, 16:9"
 	if orientation == "portrait" {
 		orientHint = "vertical phone portrait composition, 9:16, tall"
 	}
 
-	prompt := fmt.Sprintf(
-		"Professional cinematic B-roll stock photo: %s. "+
-			"%s, dramatic lighting, shallow depth of field, photorealistic, "+
-			"no text, no watermarks, high resolution.",
-		keyword, orientHint,
-	)
+	// Build image prompt: prefer rich visual_description from script; fall back to short keyword.
+	var prompt string
+	if visualDesc != "" {
+		// visualDesc is a detailed cinematic description – append orientation and quality constraints.
+		prompt = fmt.Sprintf(
+			"%s. %s, photorealistic, high resolution, no text, no watermarks.",
+			visualDesc, orientHint,
+		)
+	} else {
+		prompt = fmt.Sprintf(
+			"Professional cinematic B-roll stock photo: %s. "+
+				"%s, dramatic lighting, shallow depth of field, photorealistic, "+
+				"no text, no watermarks, high resolution.",
+			keyword, orientHint,
+		)
+	}
 
 	var lastErr error
 
@@ -114,8 +238,16 @@ func (hf *HuggingFaceService) GenerateImageForKeyword(keyword, orientation strin
 
 			// Pick next token via round-robin
 			token := hf.nextToken()
+			subjectLabel := keyword
+			if visualDesc != "" {
+				if len(visualDesc) > 80 {
+					subjectLabel = visualDesc[:80] + "..."
+				} else {
+					subjectLabel = visualDesc
+				}
+			}
 			log.Printf("[HuggingFace] model=%s attempt=%d/%d token=...%s generating %s image for: %q",
-				model, attempt, hfMaxRetriesPerModel, token[max(0, len(token)-6):], orientation, keyword)
+				model, attempt, hfMaxRetriesPerModel, token[max(0, len(token)-6):], orientation, subjectLabel)
 
 			req, err := http.NewRequest("POST", apiURL, bytes.NewReader(bodyBytes))
 			if err != nil {

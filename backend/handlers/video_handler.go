@@ -52,6 +52,7 @@ func NewVideoHandler(cfg *config.Config) *VideoHandler {
 
 	audioService := services.NewAudioService(
 		ttsPool,
+		cfg.ElevenLabsAPIKey,
 		cfg.TempDir,
 		cfg.AudioBitrate,
 		cfg.AudioSampleRate,
@@ -261,9 +262,37 @@ func (h *VideoHandler) Download(c *gin.Context) {
 	go utils.ScheduleCleanup(h.cfg.TempDir, jobID, 1*time.Hour)
 }
 
+// registerJob creates and stores a new job status directly. Used by SeriesHandler.
+func (h *VideoHandler) registerJob(jobID string, req models.GenerateRequest) *models.JobStatus {
+	// Auto-generate ContentName from topic if not provided
+	contentName := req.ContentName
+	if contentName == "" {
+		contentName = slugify(req.Topic)
+	} else {
+		contentName = slugify(contentName)
+	}
+
+	job := &models.JobStatus{
+		JobID:       jobID,
+		Platform:    req.Platform,
+		ContentName: contentName,
+		Status:      "processing",
+		Progress:    0,
+		CurrentStep: "Initializing",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+
+	h.jobsMux.Lock()
+	h.jobs[jobID] = job
+	h.jobsMux.Unlock()
+
+	return job
+}
+
 // processVideoGeneration processes video generation in background
 func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateRequest) {
-	// Helper function to update status
+	// helper function to update status
 	updateStatus := func(step string, progress int) {
 		h.jobsMux.Lock()
 		if job, exists := h.jobs[jobID]; exists {
@@ -275,20 +304,7 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 		log.Printf("[Job %s] %s (%d%%)", jobID, step, progress)
 	}
 
-	updateStatus("Creating temporary directories", 3)
-
-	// Create temp directories
-	tempDir, err := utils.CreateTempDir(h.cfg.TempDir, jobID)
-	if err != nil {
-		h.markJobFailed(jobID, fmt.Errorf("failed to create temp dir: %w", err))
-		return
-	}
-
-	// Determine platform orientation
-	orientation := "landscape"
-	if req.Platform == "tiktok" {
-		orientation = "portrait"
-	}
+	updateStatus("Initializing job", 1)
 
 	// ── Step 0: Generate script with Gemini (if not pre-provided) ──
 	var segments []models.VideoSegment
@@ -322,6 +338,43 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 		log.Printf("[Job %s] Created %d segments from direct script text", jobID, len(segments))
 	}
 
+	h.processVideoGenerationWithSegments(jobID, req, segments, nil)
+}
+
+// processVideoGenerationWithSegments runs the video pipeline given an already generated script/segment list.
+// If job is provided, it updates that struct, otherwise it fetches from jobs map.
+func (h *VideoHandler) processVideoGenerationWithSegments(jobID string, req models.GenerateRequest, segments []models.VideoSegment, job *models.JobStatus) {
+	// Helper function to update status
+	updateStatus := func(step string, progress int) {
+		h.jobsMux.Lock()
+		if job != nil {
+			job.CurrentStep = step
+			job.Progress = progress
+			job.UpdatedAt = time.Now()
+		} else if j, exists := h.jobs[jobID]; exists {
+			j.CurrentStep = step
+			j.Progress = progress
+			j.UpdatedAt = time.Now()
+		}
+		h.jobsMux.Unlock()
+		log.Printf("[Job %s] %s (%d%%)", jobID, step, progress)
+	}
+
+	updateStatus("Creating temporary directories", 3)
+
+	// Create temp directories
+	tempDir, err := utils.CreateTempDir(h.cfg.TempDir, jobID)
+	if err != nil {
+		h.markJobFailed(jobID, fmt.Errorf("failed to create temp dir: %w", err))
+		return
+	}
+
+	// Determine platform orientation
+	orientation := "landscape"
+	if req.Platform == "tiktok" {
+		orientation = "portrait"
+	}
+
 	// Step 1: Extract text items into flattened array
 	updateStatus("Preparing text for audio generation", 12)
 	var audioTexts []string
@@ -336,15 +389,102 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 		return
 	}
 
-	// Step 2: Generate audio chunks
-	updateStatus(fmt.Sprintf("Generating %d audio chunks", len(audioTexts)), 20)
-	audioPaths, err := h.audioService.GenerateAudioChunks(
-		audioTexts,
-		req.Voice,
-		req.SpeakingSpeed,
-		jobID,
-		h.cfg.MaxConcurrentTTSRequests,
-	)
+	// Step 2: Generate audio
+	var audioPaths []string
+	if req.TTSProvider == "elevenlabs" {
+		updateStatus("Generating full-script audio with ElevenLabs", 20)
+		audioPaths, err = h.audioService.GenerateAudioFullScript(segments, req.Voice, jobID)
+	} else {
+		// --- FPT.AI Optimized Consolidate Flow ---
+		type ttsGroup struct {
+			text     string
+			segIdxs  []int
+			charLens []int
+		}
+		var ttsGroups []ttsGroup
+		var currentGroup ttsGroup
+		var currentChars int
+
+		for i, seg := range segments {
+			txt := strings.TrimSpace(seg.Text)
+			if txt == "" {
+				continue
+			}
+
+			// If adding this segment exceeds chunk size, start a new group
+			if currentChars > 0 && currentChars+len(txt) > h.cfg.AudioChunkSize {
+				ttsGroups = append(ttsGroups, currentGroup)
+				currentGroup = ttsGroup{}
+				currentChars = 0
+			}
+
+			if currentGroup.text != "" {
+				currentGroup.text += " . " // Standard pause separator
+			}
+			currentGroup.text += txt
+			currentGroup.segIdxs = append(currentGroup.segIdxs, i)
+			currentGroup.charLens = append(currentGroup.charLens, len(txt))
+			currentChars += len(txt)
+		}
+		if currentChars > 0 {
+			ttsGroups = append(ttsGroups, currentGroup)
+		}
+
+		var groupTexts []string
+		for _, g := range ttsGroups {
+			groupTexts = append(groupTexts, g.text)
+		}
+
+		updateStatus(fmt.Sprintf("Generating %d consolidated audio chunks (FPT.AI)", len(groupTexts)), 20)
+		groupPaths, ttsErr := h.audioService.GenerateAudioChunks(
+			groupTexts,
+			req.Voice,
+			req.SpeakingSpeed,
+			jobID,
+			h.cfg.MaxConcurrentTTSRequests,
+		)
+		if ttsErr != nil {
+			h.markJobFailed(jobID, fmt.Errorf("FPT TTS failed: %w", ttsErr))
+			return
+		}
+
+		// Split group audio back into segment-level audio files
+		audioPaths = make([]string, len(segments))
+		for gIdx, groupPath := range groupPaths {
+			group := ttsGroups[gIdx]
+
+			// If only one segment in this group, use the file directly
+			if len(group.segIdxs) == 1 {
+				audioPaths[group.segIdxs[0]] = groupPath
+				continue
+			}
+
+			// Proportional split based on character count
+			// Since TTS is highly linear, this is very reliable for FPT.AI
+			totalCharsInGroup := 0
+			for _, l := range group.charLens {
+				totalCharsInGroup += l
+			}
+
+			groupDur, _ := utils.GetAudioDuration(groupPath)
+			var currentTime float64 = 0.0
+
+			groupDir := filepath.Dir(groupPath)
+			for sIdx, segIdx := range group.segIdxs {
+				segDur := (float64(group.charLens[sIdx]) / float64(totalCharsInGroup)) * groupDur
+				segPath := filepath.Join(groupDir, fmt.Sprintf("chunk_split_%03d_%03d.mp3", gIdx, sIdx))
+
+				if err := utils.ExtractAudioSegment(groupPath, currentTime, segDur, segPath); err != nil {
+					log.Printf("[Job %s] Failed to split group audio at %d: %v", jobID, segIdx, err)
+					audioPaths[segIdx] = groupPath // Fallback to full group audio (not ideal but safe)
+				} else {
+					audioPaths[segIdx] = segPath
+				}
+				currentTime += segDur
+			}
+		}
+	}
+
 	if err != nil {
 		h.markJobFailed(jobID, fmt.Errorf("audio generation failed: %w", err))
 		return
@@ -409,6 +549,9 @@ func (h *VideoHandler) processVideoGeneration(jobID string, req models.GenerateR
 
 			vp, err := h.stockVideoService.PrepareSegmentVideo(
 				segKeywords[idx],
+				segments[idx].VisualDescription,
+				req.T2VModel,
+				req.T2VProvider,
 				realDurations[idx],
 				jobID,
 				idx,

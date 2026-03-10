@@ -418,6 +418,18 @@ func ConcatVideos(inputFiles []string, outputPath string) error {
 	return RunFFmpegCommand(args)
 }
 
+// ExtractAudioSegment extracts a segment from an audio file
+func ExtractAudioSegment(inputPath string, startTime float64, duration float64, outputPath string) error {
+	args := []string{
+		"-ss", fmt.Sprintf("%.3f", startTime),
+		"-t", fmt.Sprintf("%.3f", duration),
+		"-i", inputPath,
+		"-c", "copy",
+		"-y", outputPath,
+	}
+	return RunFFmpegCommand(args)
+}
+
 // RemoveAudioSilence removes silence from an audio file to improve pacing
 func RemoveAudioSilence(inputPath, outputPath string) error {
 	args := []string{

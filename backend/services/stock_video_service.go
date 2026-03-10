@@ -123,9 +123,16 @@ func (sv *StockVideoService) PrepareStockVideo(keywords string, targetDuration f
 
 // PrepareSegmentVideo fetches stock video for a SINGLE audio segment (by index).
 // orientation: "landscape" (YouTube, 1920x1080) or "portrait" (TikTok, 1080x1920)
-func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration float64, jobID string, segIndex int, orientation string) (string, error) {
+func (sv *StockVideoService) PrepareSegmentVideo(keywords string, visualDesc string, t2vModel, t2vProvider string, audioDuration float64, jobID string, segIndex int, orientation string) (string, error) {
 	if orientation == "" {
 		orientation = "landscape"
+	}
+
+	if t2vModel == "" {
+		t2vModel = "genmo/mochi-1-preview" // Default
+	}
+	if t2vProvider == "" {
+		t2vProvider = "fal-ai" // Default
 	}
 
 	segDir := filepath.Join(sv.tempDir, jobID, "stock", fmt.Sprintf("seg_%03d", segIndex))
@@ -139,11 +146,47 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 	trackIface, _ := sv.jobMediaTrack.LoadOrStore(jobID, &sync.Map{})
 	usedMedia := trackIface.(*sync.Map)
 
-	// 1. Search Pexels – fetch up to 15 candidates per query (phrase search only)
+	// 1. Search Pexels – fetch up to 15 candidates per query
 	videoInfos, err := sv.searchVideoInfos(keywords, 15, orientation, usedMedia)
 	if err != nil || len(videoInfos) == 0 {
-		// Pexels returned nothing → fall back to AI image generation immediately
-		fmt.Printf("[SegVideo %d] Pexels search failed (%v), generating AI image...\n", segIndex, err)
+		// Pexels returned nothing → try Text-to-Video generation
+		fmt.Printf("[SegVideo %d] Pexels search failed (%v), trying AI Video (T2V)....\n", segIndex, err)
+
+		if sv.hfService != nil && sv.hfService.HasToken() && visualDesc != "" {
+			t2vVideoPath := filepath.Join(segDir, "t2v_output.mp4")
+
+			if videoBytes, t2vErr := sv.hfService.GenerateVideoForPrompt(visualDesc, t2vModel, t2vProvider); t2vErr == nil {
+				if os.WriteFile(t2vVideoPath, videoBytes, 0644) == nil {
+					// Normalize and trim the generated video
+					processedT2VPath := filepath.Join(segDir, "t2v_processed.mp4")
+
+					var vfFilter string
+					if orientation == "portrait" {
+						vfFilter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,setsar=1,fps=30,eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p"
+					} else {
+						vfFilter = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080:(iw-ow)/2:(ih-oh)/2,setsar=1,fps=30,eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p"
+					}
+
+					if trimErr := utils.RunFFmpegCommand([]string{
+						"-i", t2vVideoPath,
+						"-t", fmt.Sprintf("%.3f", audioDuration+0.4),
+						"-vf", vfFilter,
+						"-c:v", "libx264",
+						"-preset", "medium",
+						"-crf", "20",
+						"-an",
+						"-y", processedT2VPath,
+					}); trimErr == nil {
+						fmt.Printf("[SegVideo %d] HF T2V generation succeeded!\n", segIndex)
+						return processedT2VPath, nil
+					}
+				}
+			} else {
+				fmt.Printf("[SegVideo %d] HF T2V failed: %v, falling back to T2I...\n", segIndex, t2vErr)
+			}
+		}
+
+		// Fall back to AI image generation if T2V failed or was skipped
 
 		// Make the AI prompt unique per usage
 		uniqueKeyword := keywords
@@ -157,7 +200,7 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 
 		// Tier 1: HuggingFace FLUX.1-schnell (cheaper, faster)
 		if sv.hfService != nil && sv.hfService.HasToken() {
-			if imgBytes, imgErr := sv.hfService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
+			if imgBytes, imgErr := sv.hfService.GenerateImageForKeyword(uniqueKeyword, visualDesc, orientation); imgErr == nil {
 				if os.WriteFile(imgPath, imgBytes, 0644) == nil {
 					if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
 						fmt.Printf("[SegVideo %d] HuggingFace FLUX image gen succeeded!\n", segIndex)
@@ -173,7 +216,7 @@ func (sv *StockVideoService) PrepareSegmentVideo(keywords string, audioDuration 
 
 		// Tier 2: Gemini Image (backup)
 		if sv.geminiService != nil && sv.geminiService.HasKeys() {
-			if imgBytes, imgErr := sv.geminiService.GenerateImageForKeyword(uniqueKeyword, orientation); imgErr == nil {
+			if imgBytes, imgErr := sv.geminiService.GenerateImageForKeyword(uniqueKeyword, visualDesc, orientation); imgErr == nil {
 				if os.WriteFile(imgPath, imgBytes, 0644) == nil {
 					if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
 						fmt.Printf("[SegVideo %d] Gemini Imagen image gen succeeded!\n", segIndex)

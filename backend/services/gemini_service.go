@@ -91,16 +91,18 @@ CẤU TRÚC BẮT BUỘC:
 - CTA cuối: Nhắc subscribe và goiý video liên quan
 
 YÊU CẦU NỘI DUNG:
-- Giọng điệu: Thẳng thắn, gần gũi như người bạn thông thái, KHÔNG rập khuôn
-- Mỗi "text" segment phải TỰ KHÉ P: có thể đứng độc lập mà không cần context trước
-- Tránh dùng cụm sáo rỗng như "Thật thú vị", "Hãy cùng tìm hiểu"
-- Tổng script: 1000-1500 từ tiếng Việt
+- Giọng điệu: Thẳng thắn, gần gũi như người bạn thông thái, KHÔNG rập khuôn.
+- ELEVENLABS AUDIO TAGS: Hãy sử dụng các tag cảm xúc trong "text" để tăng tính hấp dẫn (VD: [laughs], [laughs harder], [whispers], [excited], [sighs], [sarcastic], [curious], [crying]). Đặt tag ở đầu hoặc giữa câu phù hợp với ngữ cảnh.
+- Mỗi "text" segment phải TỰ KHÉP: có thể đứng độc lập mà không cần context trước.
+- Tránh dùng cụm sáo rỗng như "Thật thú vị", "Hãy cùng tìm hiểu".
+- Tổng script: 1000-1500 từ tiếng Việt.
 
 BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác):
 [
   {
-    "text": "Đoạn script tiếng Việt (40-70 từ)...",
-    "pexels_search_query": "person running fast stress city"
+    "text": "Đoạn script tiếng Việt (100-150 từ)...",
+    "pexels_search_query": "person running fast stress city",
+    "visual_description": "Cinematic close-up of a young man with a determined expression, sprinting through a crowded neon-lit futuristic city street at night, heavy rain falling, motion blur in the background, 4k ultra-realistic."
   }
 ]
 
@@ -127,16 +129,18 @@ CẤU TRÚC BẮT BUỘC:
 
 YÊU CẦU CHẤT LƯỢNG (PO REQUIREMENTS):
 - Độ dài: Khoảng 300 - 450 từ (tiếng Việt). Đảm bảo thời lượng đọc tốn khoảng ~1m40s.
+- ELEVENLABS AUDIO TAGS: BẮT BUỘC sử dụng các tag cảm xúc như [laughs], [whispers], [excited], [sighs], [sarcastic], [curious], [mischievously] vào trong "text" để tăng tính viral và storytelling.
 - NO CLIFFHANGERS: TUYỆT ĐỐI KHÔNG làm nội dung dở dang kiểu "Đón xem Phần 2", "Follow để xem tiếp". Video phải có một kết luận TRỌN VẸN.
 - Giọng điệu (Tone): Cuốn hút, chân thật, như một chuyên gia đang ngồi tâm sự mỏng với người xem. Không dùng từ ngữ sáo rỗng hay văn phong rập khuôn của AI. Hãy dùng ngôn ngữ đời thường, sắc sảo.
 - Có nhịp điệu (Pacing): Câu ngắn xen lẫn câu dài để tạo nhịp điệu khi đọc.
-- Mỗi "text" segment (đoạn) phải dài khoảng 25-45 từ. Số lượng segment nên rơi vào khoảng 8 đến 12 segments để hình ảnh thay đổi liên tục, giữ chân người xem.
+- Mỗi "text" segment (đoạn) phải dài khoảng 50-80 từ. Số lượng segment nên rơi vào khoảng 5 đến 8 segments để nội dung sâu sắc hơn.
 
 BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác ngoài JSON):
 [
   {
     "text": "Câu Hook hoặc một đoạn kịch bản ngắn...",
-    "pexels_search_query": "shocked face close up slow motion"
+    "pexels_search_query": "shocked face close up slow motion",
+    "visual_description": "Dramatic low-angle shot of a person dropping their phone in slow motion, eyes wide in disbelief, busy subway station background, high contrast lighting, cinematic aesthetic."
   }
 ]
 
@@ -268,7 +272,8 @@ func (gs *GeminiService) callWithKey(apiKey, prompt string, temperature float64,
 // GenerateImageForKeyword generates a stock-style cinematic image using gemini-2.5-flash-image.
 // Returns raw PNG bytes. Used as fallback when Pexels is unavailable.
 // orientation: "portrait" (9:16 for TikTok) or "landscape" (16:9 for YouTube).
-func (gs *GeminiService) GenerateImageForKeyword(keyword, orientation string) ([]byte, error) {
+// visualDesc: optional cinematic scene description from the video script (preferred over keyword when non-empty).
+func (gs *GeminiService) GenerateImageForKeyword(keyword, visualDesc, orientation string) ([]byte, error) {
 	if !gs.HasKeys() {
 		return nil, fmt.Errorf("no Gemini API keys configured")
 	}
@@ -284,14 +289,25 @@ func (gs *GeminiService) GenerateImageForKeyword(keyword, orientation string) ([
 		aspectRatio = "9:16"
 	}
 
-	// Craft a cinematic B-roll prompt
-	imagePrompt := fmt.Sprintf(
-		"Professional cinematic B-roll stock photo: %s. "+
-			"Dramatic lighting, shallow depth of field, high resolution, "+
-			"photorealistic, no text, no watermarks, no people faces. "+
-			"Aspect ratio %s. Suitable for a documentary or news video segment.",
-		keyword, aspectRatio,
-	)
+	// Build image prompt: prefer rich visual_description from script; fall back to short keyword.
+	var imagePrompt string
+	if visualDesc != "" {
+		// visualDesc is already a detailed cinematic description – just enforce aspect ratio and quality constraints.
+		imagePrompt = fmt.Sprintf(
+			"%s "+
+				"Aspect ratio %s. Photorealistic, high resolution, no text, no watermarks.",
+			visualDesc, aspectRatio,
+		)
+	} else {
+		// Fallback: craft a generic cinematic prompt from the short keyword.
+		imagePrompt = fmt.Sprintf(
+			"Professional cinematic B-roll stock photo: %s. "+
+				"Dramatic lighting, shallow depth of field, high resolution, "+
+				"photorealistic, no text, no watermarks, no people faces. "+
+				"Aspect ratio %s. Suitable for a documentary or news video segment.",
+			keyword, aspectRatio,
+		)
+	}
 
 	// gemini-2.5-flash-image uses the standard generateContent endpoint
 	// with responseModalities set to IMAGE
@@ -374,4 +390,229 @@ func (gs *GeminiService) GenerateImageForKeyword(keyword, orientation string) ([
 	}
 
 	return nil, fmt.Errorf("gemini-2.5-flash-image returned no image data in parts. Body: %s", string(body))
+}
+
+// ---------- Series Video Generation ----------
+
+// GenerateSeriesOutline generates a structured outline for a multi-part series.
+// Returns ordered list of SeriesPartOutline (one per part).
+func (gs *GeminiService) GenerateSeriesOutline(topic, platform string, numParts int) ([]models.SeriesPartOutline, error) {
+	if !gs.HasKeys() {
+		return nil, fmt.Errorf("no Gemini API keys configured")
+	}
+
+	contentType := "TikTok (1-2 phút, ngắn, viral)"
+	if platform == "youtube" {
+		contentType = "YouTube (5-10 phút, sâu hơn)"
+	}
+
+	prompt := fmt.Sprintf(`Bạn là chuyên gia chiến lược content series viral bằng tiếng Việt.
+
+Chủ đề series: "%s"
+Platform: %s
+Số tập: %d
+
+Hãy tạo outline cho %d tập, đảm bảo:
+1. Mỗi tập có thể xem ĐỘC LẬP (không cần xem tập trước)
+2. Toàn series có mạch logic tăng dần: từ vấn đề → nguyên nhân → giải pháp → nâng cao → tổng kết
+3. Mỗi tập có góc nhìn RIÊNG BIỆT, không trùng lặp
+4. Tập 1 phải có hook mạnh để kéo người vào series
+5. Tập cuối phải có cảm giác "hoàn chỉnh"
+
+BẮT BUỘC trả về JSON ARRAY (không có text nào khác):
+[
+  {
+    "part_number": 1,
+    "title": "Tiêu đề tập (ngắn gọn, gây tò mò)",
+    "summary": "Tóm tắt nội dung 1-2 câu",
+    "key_points": ["Điểm chính 1", "Điểm chính 2", "Điểm chính 3"]
+  }
+]`, topic, contentType, numParts, numParts)
+
+	rawText, err := gs.callGeminiRaw(prompt, 0.7, 4096)
+	if err != nil {
+		return nil, fmt.Errorf("series outline generation failed: %w", err)
+	}
+
+	var outlines []models.SeriesPartOutline
+	if err := json.Unmarshal([]byte(rawText), &outlines); err != nil {
+		return nil, fmt.Errorf("failed to parse series outline JSON: %w. Raw: %s", err, rawText)
+	}
+	if len(outlines) == 0 {
+		return nil, fmt.Errorf("series outline is empty")
+	}
+
+	log.Printf("[Gemini] Generated series outline: %d parts for topic: %q", len(outlines), topic)
+	return outlines, nil
+}
+
+// GenerateSeriesPartScript generates a full video script for a single part of a series.
+// `outlines` is the full series outline for context. `partIndex` is 0-based.
+func (gs *GeminiService) GenerateSeriesPartScript(topic, platform string, outlines []models.SeriesPartOutline, partIndex int) ([]models.VideoSegment, error) {
+	if partIndex < 0 || partIndex >= len(outlines) {
+		return nil, fmt.Errorf("partIndex %d out of range (total %d)", partIndex, len(outlines))
+	}
+
+	part := outlines[partIndex]
+	totalParts := len(outlines)
+
+	// Build neighboring context
+	prevTitle := ""
+	if partIndex > 0 {
+		prevTitle = outlines[partIndex-1].Title
+	}
+	nextTitle := ""
+	if partIndex < totalParts-1 {
+		nextTitle = outlines[partIndex+1].Title
+	}
+
+	// Build full series context summary for Gemini
+	var seriesCtx strings.Builder
+	seriesCtx.WriteString("TOÀN BỘ SERIES:\n")
+	for i, o := range outlines {
+		marker := ""
+		if i == partIndex {
+			marker = " ← TẬP NÀY"
+		}
+		seriesCtx.WriteString(fmt.Sprintf("  Tập %d: %s%s\n", o.PartNumber, o.Title, marker))
+	}
+
+	isFirstPart := partIndex == 0
+	isLastPart := partIndex == totalParts-1
+
+	hookRule := ""
+	if isFirstPart {
+		hookRule = "- Đây là TẬP ĐẦU TIÊN: hook phải cực mạnh, giới thiệu nhẹ về series (VD: \"Đây là bí mật số 1 trong chuỗi X điều...\")"
+	} else if isLastPart {
+		hookRule = fmt.Sprintf("- Đây là TẬP CUỐI: hook thừa nhận đây là phần cuối, kết thúc bằng bài học tổng quát. Tập trước là: \"%s\"", prevTitle)
+	} else {
+		hookRule = fmt.Sprintf("- Đây là tập %d/%d, tập trước: \"%s\", tập sau: \"%s\". Hook KHÔNG được spoil tập sau, KHÔNG cần nhắc tập trước trực tiếp",
+			partIndex+1, totalParts, prevTitle, nextTitle)
+	}
+
+	var platformRule string
+	if platform == "tiktok" {
+		platformRule = `- Độ dài: 300-450 từ (TikTok ~1m30-1m50s). Mỗi segment 50-80 từ. Khoảng 5-8 segments.
+- Tone: nhanh, sắc bén, storytelling, câu ngắn xen lẫn câu dài`
+	} else {
+		platformRule = `- Độ dài: 1000-1500 từ (YouTube 5-8 phút). Mỗi segment 100-150 từ. Khoảng 8-12 segments.
+- Tone: thẳng thắn, sâu sắc, có dẫn chứng cụ thể`
+	}
+
+	prompt := fmt.Sprintf(`Bạn là chuyên gia Content Creator series viral tiếng Việt.
+
+%s
+
+CHỦ ĐỀ SERIES: "%s"
+TẬP NÀY: Tập %d/%d – "%s"
+TÓM TẮT: %s
+ĐIỂM CHÍNH CẦN COVER: %s
+
+LUẬT BẮT BUỘC:
+%s
+%s
+- ELEVENLABS AUDIO TAGS: Sử dụng các tag cảm xúc [laughs], [whispers], [excited], [sighs], [sarcastic] để làm script sống động hơn.
+- TUYỆT ĐỐI KHÔNG kết thúc bằng "Xem tập tiếp theo để biết..." hay bất kỳ cliffhanger nào
+- Mỗi tập phải có kết luận TỰ HOÀN CHỈNH
+- Không sáo rỗng, không văn phong AI cứng nhắc
+
+BẮT BUỘC trả về JSON ARRAY (không có text nào khác):
+[
+  {
+    "text": "Đoạn script tiếng Việt...",
+    "pexels_search_query": "english short action keywords",
+    "visual_description": "Cinematic 4k detailed description of the scene with character actions, lighting, and camera angle in English."
+  }
+]
+
+QUY TẮC pexels_search_query:
+1. Tiếng Anh, 2-5 từ, có ĐỘNG TỪ/CHUYỂN ĐỘNG
+2. Ví dụ TỐT: "money falling slow motion", "person stressed working late"
+3. KHÔNG dùng từ trừu tượng như "success", "mindset"`,
+		seriesCtx.String(),
+		topic,
+		partIndex+1, totalParts, part.Title,
+		part.Summary,
+		strings.Join(part.KeyPoints, ", "),
+		hookRule,
+		platformRule,
+	)
+
+	segments, err := gs.callGemini(prompt, 0.8, 4096)
+	if err != nil {
+		return nil, fmt.Errorf("series part %d script failed: %w", partIndex+1, err)
+	}
+
+	log.Printf("[Gemini] Generated script for series part %d/%d (%d segments)", partIndex+1, totalParts, len(segments))
+	return segments, nil
+}
+
+// callGeminiRaw calls Gemini and returns the raw text response (no JSON parsing).
+func (gs *GeminiService) callGeminiRaw(prompt string, temperature float64, maxTokens int) (string, error) {
+	maxRetries := 5
+	baseDelay := 2 * time.Second
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		apiKey, err := gs.getNextKey()
+		if err != nil {
+			return "", err
+		}
+
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", apiKey)
+		reqBody := geminiRequest{
+			Contents:         []geminiContent{{Parts: []geminiPart{{Text: prompt}}}},
+			GenerationConfig: geminiGenConfig{Temperature: temperature, MaxOutputTokens: maxTokens},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := gs.httpClient.Do(req)
+		if err != nil {
+			lastErr = err
+			delay := baseDelay * time.Duration(1<<uint(attempt))
+			if delay > 60*time.Second {
+				delay = 60 * time.Second
+			}
+			time.Sleep(delay)
+			continue
+		}
+
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+
+		var gemResp geminiResponse
+		if err := json.Unmarshal(body, &gemResp); err != nil {
+			lastErr = fmt.Errorf("parse error: %w", err)
+			continue
+		}
+		if gemResp.Error != nil {
+			lastErr = fmt.Errorf("API error %d: %s", gemResp.Error.Code, gemResp.Error.Message)
+			delay := baseDelay * time.Duration(1<<uint(attempt))
+			if delay > 60*time.Second {
+				delay = 60 * time.Second
+			}
+			time.Sleep(delay)
+			continue
+		}
+		if len(gemResp.Candidates) == 0 || len(gemResp.Candidates[0].Content.Parts) == 0 {
+			lastErr = fmt.Errorf("empty response")
+			continue
+		}
+
+		text := strings.TrimSpace(gemResp.Candidates[0].Content.Parts[0].Text)
+		text = strings.TrimPrefix(text, "```json")
+		text = strings.TrimPrefix(text, "```")
+		text = strings.TrimSuffix(text, "```")
+		text = strings.TrimSpace(text)
+		return text, nil
+	}
+
+	return "", fmt.Errorf("callGeminiRaw failed after %d retries: %w", maxRetries, lastErr)
 }

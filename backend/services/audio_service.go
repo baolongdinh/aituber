@@ -1,8 +1,10 @@
 package services
 
 import (
+	"aituber/models"
 	"aituber/utils"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -17,6 +20,7 @@ import (
 // AudioService handles text-to-speech and audio processing
 type AudioService struct {
 	apiPool           *utils.APIKeyPool
+	elevenLabsAPIKey  string
 	httpClient        *http.Client
 	tempDir           string
 	audioBitrate      string
@@ -26,13 +30,12 @@ type AudioService struct {
 }
 
 // NewAudioService creates a new audio service
-func NewAudioService(apiPool *utils.APIKeyPool, tempDir string, audioBitrate string, sampleRate int, crossfadeDuration float64) *AudioService {
-	// Create rate limiter (1 request every 500ms = 2 RPS)
-	// This prevents hitting FPT.AI rate limits
-	limiter := time.Tick(500 * time.Millisecond)
+func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir string, audioBitrate string, sampleRate int, crossfadeDuration float64) *AudioService {
+	limiter := time.Tick(5000 * time.Millisecond)
 
 	return &AudioService{
-		apiPool: apiPool,
+		apiPool:          apiPool,
+		elevenLabsAPIKey: elevenLabsKey,
 		httpClient: &http.Client{
 			Timeout: 2 * time.Minute,
 		},
@@ -52,27 +55,37 @@ type FPTTTSResponse struct {
 	RequestID string `json:"request_id,omitempty"`
 }
 
-// GenerateAudioChunks generates audio for each text chunk
-// Uses parallel processing with rate limiting
+// ElevenLabsTTSWithTimestampsResponse represents ElevenLabs TTS API response with timestamps
+type ElevenLabsTTSWithTimestampsResponse struct {
+	Audio     []byte `json:"audio"`
+	Alignment struct {
+		Chars            []string `json:"chars"`
+		CharStartTimesMs []int    `json:"char_start_times_ms"`
+		CharEndTimesMs   []int    `json:"char_end_times_ms"`
+	} `json:"alignment"`
+}
+
+// GenerateAudioChunks generates audio for each text chunk (FPT.AI flow)
 func (as *AudioService) GenerateAudioChunks(chunks []string, voice string, speed float64, jobID string, maxConcurrent int) ([]string, error) {
 	audioPaths := make([]string, len(chunks))
 	errors := make([]error, len(chunks))
 
-	log.Printf("[AudioService] Starting audio generation for %d chunks (Concurrency: %d)", len(chunks), maxConcurrent)
+	log.Printf("[AudioService] Starting chunked audio generation (FPT) for %d chunks", len(chunks))
 
-	// Create semaphore for rate limiting
+	// Create semaphore
 	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 
-	// Process chunks in parallel
 	for i, chunk := range chunks {
 		wg.Add(1)
 		go func(index int, text string) {
 			defer wg.Done()
-			sem <- struct{}{}        // Acquire semaphore
-			defer func() { <-sem }() // Release semaphore
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-			audioPath, err := as.generateSingleAudio(text, voice, speed, jobID, index)
+			// Force FPT fallback logic by passing provider context if needed,
+			// but here we just call the old robust segment flow.
+			audioPath, err := as.generateSingleAudioFPT(text, voice, speed, jobID, index)
 			if err != nil {
 				errors[index] = err
 			} else {
@@ -81,89 +94,310 @@ func (as *AudioService) GenerateAudioChunks(chunks []string, voice string, speed
 		}(i, chunk)
 	}
 
-	// Wait for all to complete
 	wg.Wait()
-
-	// Check for errors
 	for i, err := range errors {
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate audio chunk %d: %w", i, err)
 		}
 	}
+	return audioPaths, nil
+}
+
+// GenerateAudioFullScript generates TTS for the entire script at once (ElevenLabs flow)
+// It then splits the audio into segments based on word alignments.
+func (as *AudioService) GenerateAudioFullScript(segments []models.VideoSegment, voice string, jobID string) ([]string, error) {
+	if as.elevenLabsAPIKey == "" || as.elevenLabsAPIKey == "placeholder" {
+		return nil, fmt.Errorf("ElevenLabs API Key is missing")
+	}
+
+	log.Printf("[AudioService] Starting Full-Script TTS with ElevenLabs for %d segments", len(segments))
+
+	// 1. Join all text segments
+	var fullContent strings.Builder
+	for i, seg := range segments {
+		fullContent.WriteString(seg.Text)
+		if i < len(segments)-1 {
+			fullContent.WriteString(" ") // Add space between segments for more natural flow
+		}
+	}
+
+	// 2. Map Voice ID
+	actualVoiceID := as.mapToElevenLabsVoice(voice)
+
+	// 3. Call ElevenLabs with timestamps
+	log.Printf("[AudioService] Calling ElevenLabs with timestamps for voice: %s", actualVoiceID)
+	audioData, alignment, err := as.callElevenLabsTTSWithTimestamps(fullContent.String(), actualVoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("ElevenLabs full script failed: %w", err)
+	}
+
+	// 4. Save the master audio file
+	masterPath := filepath.Join(as.tempDir, jobID, "audio", "master_full.mp3")
+	if err := as.saveAudioFile(audioData, masterPath); err != nil {
+		return nil, err
+	}
+
+	// 5. Calculate split points for each segment
+	// We need to find the timestamp where each segment ends by matching strings.
+	audioPaths := make([]string, len(segments))
+	var lastEnd float64 = 0.0
+
+	// Words and their end times from alignment
+	// Simpler heuristic: ElevenLabs "with-timestamps" returns character-level alignment.
+	// We count characters in each segment text to find the split timestamp.
+	var charIndexOffset int = 0
+	for i, seg := range segments {
+		segLen := len(seg.Text)
+		targetCharIndex := charIndexOffset + segLen - 1
+		if targetCharIndex >= len(alignment.CharEndTimesMs) {
+			targetCharIndex = len(alignment.CharEndTimesMs) - 1
+		}
+
+		endMs := alignment.CharEndTimesMs[targetCharIndex]
+		endSec := float64(endMs) / 1000.0
+
+		// Extract segment
+		segmentPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_%03d.mp3", i))
+		duration := endSec - lastEnd
+		if duration <= 0 {
+			duration = 0.1 // Minimum
+		}
+
+		err := utils.ExtractAudioSegment(masterPath, lastEnd, duration, segmentPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to split audio for segment %d: %w", i, err)
+		}
+
+		// Post-process (silence removal)
+		pacedPath, _ := as.postProcessAudio(segmentPath, jobID, i)
+		audioPaths[i] = pacedPath
+
+		lastEnd = endSec
+		charIndexOffset += segLen + 1 // +1 for the space we added
+	}
 
 	return audioPaths, nil
 }
 
-// generateSingleAudio generates audio for a single text chunk with retry
-func (as *AudioService) generateSingleAudio(text, voice string, speed float64, jobID string, index int) (string, error) {
-	maxRetries := 5
-	var lastErr error
-	currentText := text
+// mapToElevenLabsVoice maps FPT voices or takes long ID
+func (as *AudioService) mapToElevenLabsVoice(voiceID string) string {
+	const (
+		elevenMaleID   = "ipTvfDXAg1zowfF1rv9w"
+		elevenFemaleID = "Si3s1VCb7dLbeqH57kiC"
+	)
+	if len(voiceID) >= 10 {
+		return voiceID
+	}
+	isMale := false
+	maleVoices := []string{"minhquang", "giahuy", "vandoan", "manhduc"}
+	for _, mv := range maleVoices {
+		if voiceID == mv {
+			isMale = true
+			break
+		}
+	}
+	if isMale {
+		return elevenMaleID
+	}
+	return elevenFemaleID
+}
 
-	log.Printf("[Chunk %d] Calling TTS - TEXT: %s ", index, text)
-	for attempt := 0; attempt < maxRetries; attempt++ {
+// generateSingleAudioFPT calls FPT.AI TTS and polls for the result.
+// The TTS *API call* and the *poll* now have independent retry budgets:
+//   - API call: max 3 attempts (only if the API itself returns an error).
+//   - Poll: up to 30 attempts with exponential backoff (total ~5 min).
+//     If poll times out, we retry the API call to get a fresh URL.
+func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64, jobID string, index int) (string, error) {
+	audioPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_%03d.mp3", index))
+	maxAPIRetries := 36 // Tăng số lượng retries để có thể roll qua nhiều key hơn nếu FPT bị treo
+	var lastErr error
+
+	for attempt := 0; attempt < maxAPIRetries; attempt++ {
 		if attempt > 0 {
-			// Append a space to the text to bypass FPT.AI cache on retry
-			// This forces the TTS engine to generate a fresh audio file instead of returning a broken cached URL
-			currentText += " "
+			log.Printf("[Chunk %d] Re-requesting FPT.AI TTS (Attempt %d/%d)", index, attempt+1, maxAPIRetries)
 		}
 
-		// Get API key from pool
 		apiKey, err := as.apiPool.GetRandomKey()
 		if err != nil {
-			return "", fmt.Errorf("no available API keys: %w", err)
+			return "", fmt.Errorf("no available FPT API keys: %w", err)
 		}
 
-		// Call TTS API - this returns async URL or direct audio
-		log.Printf("[Chunk %d] Calling TTS API (attempt %d/%d)", index, attempt+1, maxRetries)
-		asyncURL, apiErr := as.callFPTTTSAsync(currentText, voice, speed, apiKey)
+		asyncURL, apiErr := as.callFPTTTSAsync(text, voice, speed, apiKey)
 		if apiErr != nil {
-			// API call failed - blacklist the key
-			log.Printf("[Chunk %d] API call failed: %v", index, apiErr)
-			as.apiPool.MarkFailed(apiKey, time.Duration(15)*time.Second)
+			log.Printf("[Chunk %d] FPT API call failed: %v", index, apiErr)
+			as.apiPool.MarkFailed(apiKey, 15*time.Second)
 			lastErr = apiErr
-			time.Sleep(time.Duration(attempt+1) * time.Second)
+			time.Sleep(3 * time.Second)
 			continue
 		}
-
-		// API call succeeded - mark key as successful
-		log.Printf("[Chunk %d] API call successful, async URL: %s", index, asyncURL)
 		as.apiPool.MarkSuccess(apiKey)
 
-		// Now download the audio with retry (file may not be ready yet)
-		log.Printf("[Chunk %d] Starting download with retry...", index)
-		audioData, downloadErr := as.downloadAudioWithRetry(asyncURL, index)
+		// Poll the URL independently — don't re-call TTS just because poll timed out
+		audioData, downloadErr := as.pollForAudioDownload(asyncURL, index)
 		if downloadErr != nil {
-			// Download failed even after retries
-			// We will retry the entire process (get new key -> call API -> download)
-			log.Printf("[Chunk %d] Download failed after all retries: %v. Retrying API call (Attempt %d/%d)...", index, downloadErr, attempt+1, maxRetries)
+			// Poll exhausted. The job may still complete on FPT side,
+			// but re-requesting with a new URL is our only option now.
+			log.Printf("[Chunk %d] Poll exhausted for URL, will re-request TTS: %v", index, downloadErr)
 			lastErr = downloadErr
-			time.Sleep(2 * time.Second)
-			continue
+			continue // try getting a fresh URL
 		}
 
-		log.Printf("[Chunk %d] Download successful, size: %d bytes", index, len(audioData))
-
-		// Save audio to file
-		audioPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_%03d.mp3", index))
 		if err := as.saveAudioFile(audioData, audioPath); err != nil {
-			return "", fmt.Errorf("failed to save audio: %w", err)
+			return "", err
 		}
+		return as.postProcessAudio(audioPath, jobID, index)
+	}
+	// Nếu thử hết 5 lần vẫn lỗi, trả về lỗi cuối cùng
+	return "", fmt.Errorf("FPT failed after %d API attempts, last error: %v", maxAPIRetries, lastErr)
+}
 
-		// Elite Fast-Pacing: Remove dead air and trailing silence from the TTS chunk
-		pacedPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_paced_%03d.mp3", index))
-		if err := utils.RemoveAudioSilence(audioPath, pacedPath); err == nil {
-			// If pacing succeeded, clean up original and use the paced version
-			os.Remove(audioPath)
-			return pacedPath, nil
-		}
+// callElevenLabsTTSWithTimestamps calls ElevenLabs API and returns audio + alignment
+func (as *AudioService) callElevenLabsTTSWithTimestamps(text, voiceID string) ([]byte, ElevenLabsTTSWithTimestampsResponse_Alignment, error) {
+	// The endpoint for timestamps is slightly different and requires a streaming output format
+	url := fmt.Sprintf("https://api.elevenlabs.io/v1/text-to-speech/%s/stream/with-timestamps", voiceID)
 
-		// Fallback to original if silence removal filtering failed for some edge case
-		log.Printf("[Chunk %d] Silence removal failed (using original): %v", index, lastErr)
-		return audioPath, nil
+	payload := map[string]interface{}{
+		"text":     text,
+		"model_id": "eleven_multilingual_v2",
+		"voice_settings": map[string]interface{}{
+			"stability":        0.5,
+			"similarity_boost": 0.75,
+		},
 	}
 
-	return "", fmt.Errorf("failed after %d retries. Last error: %v", maxRetries, lastErr)
+	jsonPayload, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, ElevenLabsTTSWithTimestampsResponse_Alignment{}, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("xi-api-key", as.elevenLabsAPIKey)
+
+	resp, err := as.httpClient.Do(req)
+	if err != nil {
+		return nil, ElevenLabsTTSWithTimestampsResponse_Alignment{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, ElevenLabsTTSWithTimestampsResponse_Alignment{}, fmt.Errorf("ElevenLabs API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	// The "with-timestamps" response is a JSON stream where each line/chunk contains audio and alignment.
+	// Since we are calling the non-streaming REST wrapper as a block, we need to assemble it.
+	// Actually, for REST it returns a combined JSON object.
+	var fullAudio []byte
+	var finalAlignment ElevenLabsTTSWithTimestampsResponse_Alignment
+
+	decoder := json.NewDecoder(resp.Body)
+	for decoder.More() {
+		var chunk struct {
+			AudioBase64 string                                        `json:"audio_base64"`
+			Alignment   ElevenLabsTTSWithTimestampsResponse_Alignment `json:"alignment"`
+		}
+		if err := decoder.Decode(&chunk); err != nil {
+			break
+		}
+
+		if chunk.AudioBase64 != "" {
+			audio, _ := base64.StdEncoding.DecodeString(chunk.AudioBase64)
+			fullAudio = append(fullAudio, audio...)
+		}
+
+		if len(chunk.Alignment.Chars) > 0 {
+			finalAlignment.Chars = append(finalAlignment.Chars, chunk.Alignment.Chars...)
+			finalAlignment.CharStartTimesMs = append(finalAlignment.CharStartTimesMs, chunk.Alignment.CharStartTimesMs...)
+			finalAlignment.CharEndTimesMs = append(finalAlignment.CharEndTimesMs, chunk.Alignment.CharEndTimesMs...)
+		}
+	}
+
+	return fullAudio, finalAlignment, nil
+}
+
+// ElevenLabsTTSWithTimestampsResponse_Alignment helper struct
+type ElevenLabsTTSWithTimestampsResponse_Alignment struct {
+	Chars            []string `json:"chars"`
+	CharStartTimesMs []int    `json:"char_start_times_ms"`
+	CharEndTimesMs   []int    `json:"char_end_times_ms"`
+}
+
+// callElevenLabsTTS calls ElevenLabs Text-to-Speech API (Legacy/Simple fallback)
+func (as *AudioService) callElevenLabsTTS(text, voiceID string) ([]byte, error) {
+	// Male: ipTvfDXAg1zowfF1rv9w
+	// Female: Si3s1VCb7dLbeqH57kiC
+	const (
+		elevenMaleID   = "ipTvfDXAg1zowfF1rv9w"
+		elevenFemaleID = "Si3s1VCb7dLbeqH57kiC"
+	)
+
+	actualVoiceID := voiceID
+	// If it's a long ID, it's already an ElevenLabs ID
+	if len(actualVoiceID) < 10 {
+		// It's an FPT voice ID, map it to ElevenLabs by gender
+		isMale := false
+		maleVoices := []string{"minhquang", "giahuy", "vandoan", "manhduc"}
+		for _, mv := range maleVoices {
+			if actualVoiceID == mv {
+				isMale = true
+				break
+			}
+		}
+
+		if isMale {
+			actualVoiceID = elevenMaleID
+		} else {
+			actualVoiceID = elevenFemaleID
+		}
+	}
+
+	url := fmt.Sprintf("https://api.elevenlabs.io/v1/text-to-speech/%s", actualVoiceID)
+
+	// ElevenLabs settings for v3
+	payload := map[string]interface{}{
+		"text":     text,
+		"model_id": "eleven_multilingual_v2", // Multilingual v2 is super stable for VN
+		"voice_settings": map[string]interface{}{
+			"stability":         0.5,
+			"similarity_boost":  0.75,
+			"style":             0.0,
+			"use_speaker_boost": true,
+		},
+	}
+
+	jsonPayload, _ := json.Marshal(payload)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("xi-api-key", as.elevenLabsAPIKey)
+
+	resp, err := as.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("ElevenLabs API returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	return io.ReadAll(resp.Body)
+}
+
+// postProcessAudio handles silence removal and path management
+func (as *AudioService) postProcessAudio(audioPath, jobID string, index int) (string, error) {
+	pacedPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_paced_%03d.mp3", index))
+	if err := utils.RemoveAudioSilence(audioPath, pacedPath); err == nil {
+		os.Remove(audioPath)
+		return pacedPath, nil
+	}
+	log.Printf("[Chunk %d] Silence removal failed (using original)", index)
+	return audioPath, nil
 }
 
 // callFPTTTSAsync calls FPT.AI TTS API and returns the async URL
@@ -224,49 +458,40 @@ func (as *AudioService) callFPTTTSAsync(text, voice string, speed float64, apiKe
 
 	log.Printf("[TTS API] Received async URL: %s (request_id: %s)", apiResp.Async, apiResp.RequestID)
 
-	// Wait a bit before returning to give FPT time to register the job
-	time.Sleep(2 * time.Second)
+	// Đợi một khoảng ngắn để FPT tạo file. Thay vì 5s cứng ngắc, chờ 3s là đủ cho chunk nhỏ.
+	time.Sleep(3 * time.Second)
 
 	return apiResp.Async, nil
 }
 
-// downloadAudioWithRetry downloads audio with retry logic
-// FPT.AI files need 5s-2min processing time, so we retry until successful
-func (as *AudioService) downloadAudioWithRetry(url string, chunkIndex int) ([]byte, error) {
-	maxRetries := 10                 // 100 retries
-	retryInterval := 5 * time.Second // 5 seconds between retries
-	// Total time: 25 * 5s = 125s = 2 minutes
-
-	log.Printf("[Chunk %d] Starting download retry loop (max %d retries, %v interval)", chunkIndex, maxRetries, retryInterval)
-
+// pollForAudioDownload polls a FPT.AI generated audio URL.
+// Quy định theo ý tưởng mới: Tổng thời gian chờ tối đa khoảng 60s.
+// Nếu quá 60s (chủ yếu là 404 không thấy URL) -> fail fast để roll key khác.
+func (as *AudioService) pollForAudioDownload(url string, chunkIndex int) ([]byte, error) {
+	maxAttempts := 15
+	pollInterval := 4 * time.Second // 15 attempts * 4s = ~60s tổng thời gian chờ timeout
 	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		if attempt > 0 {
-			// Wait before retry (except first attempt)
-			if attempt%10 == 0 {
-				// Log every 10th retry to avoid spam
-				log.Printf("[Chunk %d] Retry attempt %d/%d...", chunkIndex, attempt, maxRetries)
-			}
-			time.Sleep(retryInterval)
-		}
 
+	for i := 1; i <= maxAttempts; i++ {
 		data, err := as.downloadAudio(url)
 		if err == nil {
-			// Success!
-			log.Printf("[Chunk %d] Download successful on attempt %d", chunkIndex, attempt+1)
+			log.Printf("[Chunk %d] Audio ready after %d poll attempt(s)", chunkIndex, i)
 			return data, nil
 		}
 
-		// Failed, record error and retry
 		lastErr = err
-		if attempt == 0 {
-			// Log first failure (file likely not ready yet)
-			log.Printf("[Chunk %d] First download attempt failed (expected - file processing): %v", chunkIndex, err)
+
+		if strings.Contains(err.Error(), "404") {
+			log.Printf("[Chunk %d] Audio not ready (404), waiting 4s (attempt %d/%d, max ~60s)", chunkIndex, i, maxAttempts)
+		} else {
+			log.Printf("[Chunk %d] Download error: %v, waiting 4s (attempt %d/%d, max ~60s)", chunkIndex, err, i, maxAttempts)
 		}
+
+		// Giữ nguyên 4s cho mỗi lần thử để rải đều trong 60s (không dùng exponential backoff vì thường 404 kéo dài)
+		time.Sleep(pollInterval)
 	}
 
-	log.Printf("[Chunk %d] All %d retry attempts exhausted", chunkIndex, maxRetries)
-	return nil, fmt.Errorf("failed to download after %d retries (8 minutes): %w", maxRetries, lastErr)
+	return nil, fmt.Errorf("audio URL still 404 or err after ~60s wait (poll exhausted): %w", lastErr)
 }
 
 // downloadAudio downloads audio from URL
