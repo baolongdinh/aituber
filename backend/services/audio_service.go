@@ -211,6 +211,7 @@ func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64
 	audioPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_%03d.mp3", index))
 	maxAPIRetries := 36 // Tăng số lượng retries để có thể roll qua nhiều key hơn nếu FPT bị treo
 	var lastErr error
+	var asyncURLs []string // Mảng lưu các URL đã sinh ra trong các lần retry
 
 	for attempt := 0; attempt < maxAPIRetries; attempt++ {
 		if attempt > 0 {
@@ -232,12 +233,14 @@ func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64
 		}
 		as.apiPool.MarkSuccess(apiKey)
 
-		// Poll the URL independently — don't re-call TTS just because poll timed out
-		audioData, downloadErr := as.pollForAudioDownload(asyncURL, index)
+		// Thêm url mới vào list
+		asyncURLs = append(asyncURLs, asyncURL)
+
+		// Poll TẤT CẢ các URL trong list độc lập
+		audioData, downloadErr := as.pollForAudioDownloadList(asyncURLs, index)
 		if downloadErr != nil {
-			// Poll exhausted. The job may still complete on FPT side,
-			// but re-requesting with a new URL is our only option now.
-			log.Printf("[Chunk %d] Poll exhausted for URL, will re-request TTS: %v", index, downloadErr)
+			// Poll exhausted.
+			log.Printf("[Chunk %d] Poll exhausted for %d URLs, will re-request TTS: %v", index, len(asyncURLs), downloadErr)
 			lastErr = downloadErr
 			continue // try getting a fresh URL
 		}
@@ -464,34 +467,41 @@ func (as *AudioService) callFPTTTSAsync(text, voice string, speed float64, apiKe
 	return apiResp.Async, nil
 }
 
-// pollForAudioDownload polls a FPT.AI generated audio URL.
+// pollForAudioDownloadList polls a list of FPT.AI generated audio URLs.
 // Quy định theo ý tưởng mới: Tổng thời gian chờ tối đa khoảng 60s.
-// Nếu quá 60s (chủ yếu là 404 không thấy URL) -> fail fast để roll key khác.
-func (as *AudioService) pollForAudioDownload(url string, chunkIndex int) ([]byte, error) {
+// Nó lặp qua tất cả URLs trong danh sách, nếu bất kỳ URL nào trả về data thành công thì thoát và lấy kết quả đó.
+func (as *AudioService) pollForAudioDownloadList(urls []string, chunkIndex int) ([]byte, error) {
 	maxAttempts := 15
 	pollInterval := 4 * time.Second // 15 attempts * 4s = ~60s tổng thời gian chờ timeout
 	var lastErr error
 
 	for i := 1; i <= maxAttempts; i++ {
-		data, err := as.downloadAudio(url)
-		if err == nil {
-			log.Printf("[Chunk %d] Audio ready after %d poll attempt(s)", chunkIndex, i)
-			return data, nil
+		var any404 bool
+
+		for _, url := range urls {
+			data, err := as.downloadAudio(url)
+			if err == nil {
+				log.Printf("[Chunk %d] Audio ready after %d poll attempt(s) from one of the URLs", chunkIndex, i)
+				return data, nil
+			}
+
+			lastErr = err
+			if strings.Contains(err.Error(), "404") {
+				any404 = true
+			}
 		}
 
-		lastErr = err
-
-		if strings.Contains(err.Error(), "404") {
-			log.Printf("[Chunk %d] Audio not ready (404), waiting 4s (attempt %d/%d, max ~60s)", chunkIndex, i, maxAttempts)
+		if any404 {
+			log.Printf("[Chunk %d] Audio not ready (404) for %d URLs, waiting 4s (attempt %d/%d, max ~60s)", chunkIndex, len(urls), i, maxAttempts)
 		} else {
-			log.Printf("[Chunk %d] Download error: %v, waiting 4s (attempt %d/%d, max ~60s)", chunkIndex, err, i, maxAttempts)
+			log.Printf("[Chunk %d] Download error: %v, waiting 4s (attempt %d/%d, max ~60s)", chunkIndex, lastErr, i, maxAttempts)
 		}
 
-		// Giữ nguyên 4s cho mỗi lần thử để rải đều trong 60s (không dùng exponential backoff vì thường 404 kéo dài)
+		// Giữ nguyên 4s cho mỗi lần thử để rải đều trong 60s
 		time.Sleep(pollInterval)
 	}
 
-	return nil, fmt.Errorf("audio URL still 404 or err after ~60s wait (poll exhausted): %w", lastErr)
+	return nil, fmt.Errorf("all %d URLs still 404 or err after ~60s wait (poll exhausted): %w", len(urls), lastErr)
 }
 
 // downloadAudio downloads audio from URL

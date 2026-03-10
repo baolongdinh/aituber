@@ -92,15 +92,14 @@ CẤU TRÚC BẮT BUỘC:
 
 YÊU CẦU NỘI DUNG:
 - Giọng điệu: Thẳng thắn, gần gũi như người bạn thông thái, KHÔNG rập khuôn.
-- ELEVENLABS AUDIO TAGS: Hãy sử dụng các tag cảm xúc trong "text" để tăng tính hấp dẫn (VD: [laughs], [laughs harder], [whispers], [excited], [sighs], [sarcastic], [curious], [crying]). Đặt tag ở đầu hoặc giữa câu phù hợp với ngữ cảnh.
-- Mỗi "text" segment phải TỰ KHÉP: có thể đứng độc lập mà không cần context trước.
 - Tránh dùng cụm sáo rỗng như "Thật thú vị", "Hãy cùng tìm hiểu".
 - Tổng script: 1000-1500 từ tiếng Việt.
+- CHUYỂN CẢNH NHANH CHÓNG (QUAN TRỌNG): Mỗi "text" segment (đoạn) PHẢI CỰC KỲ NGẮN, chỉ khoảng 5-15 từ! Điều này nhằm đảm bảo mỗi hình ảnh minh họa chỉ tồn tại trên màn hình cỡ 1.5 đến 3 giây, tránh sự nhàm chán cho người xem. Kịch bản của bạn sẽ bị băm làm RẤT NHIỀU segment (cỡ 60-150 segments).
 
 BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác):
 [
   {
-    "text": "Đoạn script tiếng Việt (100-150 từ)...",
+    "text": "1 dòng siêu ngắn (5-15 từ) để đọc trôi quá cỡ 2 giây...",
     "pexels_search_query": "person running fast stress city",
     "visual_description": "Cinematic close-up of a young man with a determined expression, sprinting through a crowded neon-lit futuristic city street at night, heavy rain falling, motion blur in the background, 4k ultra-realistic."
   }
@@ -113,7 +112,7 @@ QUY TẮC pexels_search_query (BẮT BUỘC):
 4. Ví dụ TỐT: "money falling slow motion", "athlete running sunrise", "city timelapse traffic"
 5. Ví dụ XẤU: "success", "teamwork", "growth" (quá chung chung)`, topic)
 
-	return gs.callGemini(prompt, 0.75, 4096)
+	return gs.callGemini(prompt, 0.75, 8192)
 }
 
 // GenerateTikTokScript generates a short, viral TikTok script from a topic
@@ -129,16 +128,15 @@ CẤU TRÚC BẮT BUỘC:
 
 YÊU CẦU CHẤT LƯỢNG (PO REQUIREMENTS):
 - Độ dài: Khoảng 300 - 450 từ (tiếng Việt). Đảm bảo thời lượng đọc tốn khoảng ~1m40s.
-- ELEVENLABS AUDIO TAGS: BẮT BUỘC sử dụng các tag cảm xúc như [laughs], [whispers], [excited], [sighs], [sarcastic], [curious], [mischievously] vào trong "text" để tăng tính viral và storytelling.
 - NO CLIFFHANGERS: TUYỆT ĐỐI KHÔNG làm nội dung dở dang kiểu "Đón xem Phần 2", "Follow để xem tiếp". Video phải có một kết luận TRỌN VẸN.
 - Giọng điệu (Tone): Cuốn hút, chân thật, như một chuyên gia đang ngồi tâm sự mỏng với người xem. Không dùng từ ngữ sáo rỗng hay văn phong rập khuôn của AI. Hãy dùng ngôn ngữ đời thường, sắc sảo.
 - Có nhịp điệu (Pacing): Câu ngắn xen lẫn câu dài để tạo nhịp điệu khi đọc.
-- Mỗi "text" segment (đoạn) phải dài khoảng 50-80 từ. Số lượng segment nên rơi vào khoảng 5 đến 8 segments để nội dung sâu sắc hơn.
+- CHUYỂN CẢNH SIÊU NHANH (QUAN TRỌNG NHẤT): Mỗi "text" segment (đoạn) PHẢI NHỎ NHẤT CÓ THỂ, chỉ khoảng 5-15 từ (tương đương 1 câu hoặc 1 vế của câu) để hình minh hoạ chỉ hiển thị tầm 1.5 - 3 giây. Số lượng segment sẽ chạy từ 20 đến 50 segments tùy độ dài tổng. Mấu chốt là để nhảy ảnh liên tục tạo cảm giác dồn dập, hút mắt người xem!
 
 BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác ngoài JSON):
 [
   {
-    "text": "Câu Hook hoặc một đoạn kịch bản ngắn...",
+    "text": "Câu Hook hoặc 1 mảnh siêu ngắn...",
     "pexels_search_query": "shocked face close up slow motion",
     "visual_description": "Dramatic low-angle shot of a person dropping their phone in slow motion, eyes wide in disbelief, busy subway station background, high contrast lighting, cinematic aesthetic."
   }
@@ -151,7 +149,7 @@ QUY TẮC pexels_search_query (BẮT BUỘC):
 4. TUYỆT ĐỐI KHÔNG dùng từ trừu tượng kiểu "success", "mindset". Không dùng tiếng Việt.`, topic)
 
 	// Temperature 0.8 to encourage creative, natural storytelling
-	return gs.callGemini(prompt, 0.8, 4096)
+	return gs.callGemini(prompt, 0.8, 8192)
 }
 
 // callGemini calls the Gemini API and parses response into JSON segment array
@@ -492,10 +490,12 @@ func (gs *GeminiService) GenerateSeriesPartScript(topic, platform string, outlin
 
 	var platformRule string
 	if platform == "tiktok" {
-		platformRule = `- Độ dài: 300-450 từ (TikTok ~1m30-1m50s). Mỗi segment 50-80 từ. Khoảng 5-8 segments.
+		platformRule = `- Độ dài: 300-450 từ (TikTok ~1m30-1m50s).
+- CHUYỂN CẢNH SIÊU TỐC: Băm nhỏ text thành các đoạn RẤT NGẮN, mỗi "text" segment chỉ được 5-15 từ, để hình ảnh minh họa thay đổi nháy chớp liên tục mỗi 1.5 - 3 giây.
 - Tone: nhanh, sắc bén, storytelling, câu ngắn xen lẫn câu dài`
 	} else {
-		platformRule = `- Độ dài: 1000-1500 từ (YouTube 5-8 phút). Mỗi segment 100-150 từ. Khoảng 8-12 segments.
+		platformRule = `- Độ dài: 1000-1500 từ (YouTube 5-8 phút).
+- CHUYỂN CẢNH SIÊU TỐC: Băm nhỏ text thành các đoạn RẤT NGẮN, mỗi "text" segment chỉ được 5-15 từ, để hình ảnh minh họa thay đổi nháy chớp liên tục mỗi 1.5 - 3 giây.
 - Tone: thẳng thắn, sâu sắc, có dẫn chứng cụ thể`
 	}
 
@@ -511,7 +511,6 @@ TÓM TẮT: %s
 LUẬT BẮT BUỘC:
 %s
 %s
-- ELEVENLABS AUDIO TAGS: Sử dụng các tag cảm xúc [laughs], [whispers], [excited], [sighs], [sarcastic] để làm script sống động hơn.
 - TUYỆT ĐỐI KHÔNG kết thúc bằng "Xem tập tiếp theo để biết..." hay bất kỳ cliffhanger nào
 - Mỗi tập phải có kết luận TỰ HOÀN CHỈNH
 - Không sáo rỗng, không văn phong AI cứng nhắc
@@ -538,7 +537,7 @@ QUY TẮC pexels_search_query:
 		platformRule,
 	)
 
-	segments, err := gs.callGemini(prompt, 0.8, 4096)
+	segments, err := gs.callGemini(prompt, 0.8, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("series part %d script failed: %w", partIndex+1, err)
 	}
