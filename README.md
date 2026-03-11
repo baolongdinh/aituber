@@ -2,7 +2,7 @@
 
 **ViralCraft AI** is a professional-grade, automated video generation engine powered by **Google Gemini**. It transforms simple ideas or complex topics into high-engagement, viral video series for TikTok and YouTube, handling everything from scriptwriting and voice synthesis to visual orchestration and final composition.
 
-![ViralCraft UI Overview](https://raw.githubusercontent.com/baolongdinh/aituber/main/frontend/src/assets/preview.png) *(Note: Replace with actual asset path or keep as placeholder)*
+<img width="1834" height="910" alt="image" src="https://github.com/user-attachments/assets/252f9c22-70b6-4c63-8872-4e3490d5b5f7" />
 
 ## 🚀 Key Capabilities
 
