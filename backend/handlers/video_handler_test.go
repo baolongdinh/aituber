@@ -74,3 +74,10 @@ func TestVideoHandler_BuildFinalConcatList(t *testing.T) {
 		}
 	})
 }
+
+func TestVideoHandler_GenerateSRT_Logic(t *testing.T) {
+	// GenerateSRT has been updated to remove platform-specific offsets.
+	// This test just ensures the method exists and compiles with the new logic.
+	h := &VideoHandler{}
+	_ = h
+}

@@ -86,6 +86,9 @@ func (as *AudioService) GenerateAudioChunks(chunks []string, voice string, speed
 			// Force FPT fallback logic by passing provider context if needed,
 			// but here we just call the old robust segment flow.
 			audioPath, err := as.generateSingleAudioFPT(text, voice, speed, jobID, index)
+			if err == nil {
+				audioPath, err = as.postProcessAudio(audioPath, jobID, index)
+			}
 			if err != nil {
 				errors[index] = err
 			} else {

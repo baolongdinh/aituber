@@ -5,6 +5,7 @@ import (
 	"aituber/models"
 	"aituber/services"
 	"aituber/utils"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -70,7 +71,7 @@ func NewVideoHandler(cfg *config.Config) *VideoHandler {
 
 	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
 	hfService := services.NewHuggingFaceService(cfg.HuggingFaceTokens)
-	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, geminiService, hfService)
+	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService)
 	composerService := services.NewComposerService(cfg.VideoBitrate)
 
 	return &VideoHandler{
@@ -532,10 +533,10 @@ func (h *VideoHandler) processVideoGenerationWithSegments(jobID string, req mode
 		log.Printf("[Job %s] Segment %d stock video keywords: %q", jobID, i, segKeywords[i])
 	}
 
-	// Fetch + trim a stock video per segment in parallel (max 3 concurrent)
+	// Fetch + trim a stock video per segment in parallel (using configured max concurrency)
 	segVideoPaths := make([]string, len(segments))
 	segErrors := make([]error, len(segments))
-	sem := make(chan struct{}, 3)
+	sem := make(chan struct{}, h.cfg.MaxConcurrentVideoRequests)
 	var wg sync.WaitGroup
 
 	for i := range segments {
@@ -547,7 +548,12 @@ func (h *VideoHandler) processVideoGenerationWithSegments(jobID string, req mode
 
 			updateStatus(fmt.Sprintf("Fetching stock video for segment %d/%d", idx+1, len(segments)), 50+idx*30/len(segments))
 
+			// Create a per-segment context with timeout (3 mins per segment should be plenty)
+			segCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+
 			vp, err := h.stockVideoService.PrepareSegmentVideo(
+				segCtx,
 				segKeywords[idx],
 				segments[idx].VisualDescription,
 				req.T2VModel,
@@ -555,7 +561,7 @@ func (h *VideoHandler) processVideoGenerationWithSegments(jobID string, req mode
 				realDurations[idx],
 				jobID,
 				idx,
-				orientation, // pass platform orientation
+				orientation,
 			)
 			if err != nil {
 				segErrors[idx] = err
@@ -567,27 +573,29 @@ func (h *VideoHandler) processVideoGenerationWithSegments(jobID string, req mode
 	}
 	wg.Wait()
 
-	// Check for segment errors (allow soft failures)
-	var goodSegPaths []string
+	// Check for segment errors (strict: all must succeed or use fallback)
+	var finalSegPaths []string
 	for i, err := range segErrors {
 		if err != nil {
-			log.Printf("[Job %s] Segment %d failed, skipping from timeline: %v", jobID, i, err)
-			continue
+			h.markJobFailed(jobID, fmt.Errorf("segment %d video generation failed critically: %w", i, err))
+			return
 		}
-		if segVideoPaths[i] != "" {
-			goodSegPaths = append(goodSegPaths, segVideoPaths[i])
+		if segVideoPaths[i] == "" {
+			h.markJobFailed(jobID, fmt.Errorf("segment %d returned empty video path", i))
+			return
 		}
+		finalSegPaths = append(finalSegPaths, segVideoPaths[i])
 	}
 
-	if len(goodSegPaths) == 0 {
-		h.markJobFailed(jobID, fmt.Errorf("all segment video fetches failed"))
+	if len(finalSegPaths) != len(segments) {
+		h.markJobFailed(jobID, fmt.Errorf("segment count mismatch: got %d, want %d", len(finalSegPaths), len(segments)))
 		return
 	}
 
 	// Concatenate all segment videos into one video track
 	updateStatus("Concatenating segment videos", 82)
 	concatVideoPath := filepath.Join(tempDir, "output", "segments_concat.mp4")
-	if err := utils.ConcatVideosNoAudio(goodSegPaths, concatVideoPath); err != nil {
+	if err := utils.ConcatVideosNoAudio(finalSegPaths, concatVideoPath); err != nil {
 		h.markJobFailed(jobID, fmt.Errorf("segment video concat failed: %w", err))
 		return
 	}
@@ -601,6 +609,18 @@ func (h *VideoHandler) processVideoGenerationWithSegments(jobID string, req mode
 		return
 	}
 	finalVideoPath := composedPath // start with composed path
+
+	// Step 8.5: Burn subtitles for premium look
+	updateStatus("Burning premium subtitles", 92)
+	srtPath := filepath.Join(tempDir, "output", "subtitles.srt")
+	videoWithSubs := filepath.Join(tempDir, "output", "final_with_subtitles.mp4")
+	if _, err := os.Stat(srtPath); err == nil {
+		if err := utils.BurnSubtitles(composedPath, srtPath, videoWithSubs, orientation); err != nil {
+			log.Printf("[Job %s] Subtitle burning failed: %v", jobID, err)
+		} else {
+			finalVideoPath = videoWithSubs
+		}
+	}
 
 	// Step 9: Add Intro/Outro ONLY for youtube
 	updateStatus("Adding intro/outro", 95)
@@ -741,19 +761,8 @@ func (h *VideoHandler) GenerateSRT(jobID string, audioPaths []string, texts []st
 	}
 	defer file.Close()
 
-	// Calculate initial offset (Intro duration ONLY on YouTube)
+	// Calculate initial offset (Always 0.0 because subtitles are burned into main content before intro/outro)
 	currentOffset := 0.0
-	if platform == "youtube" {
-		introPath := "static/intro_video.mp4"
-		if _, err := os.Stat(introPath); err == nil {
-			duration, err := utils.GetVideoDuration(introPath)
-			if err == nil {
-				currentOffset = duration
-			} else {
-				log.Printf("Failed to get intro duration: %v", err)
-			}
-		}
-	}
 
 	for i, audioPath := range audioPaths {
 		if i >= len(texts) {
@@ -763,11 +772,6 @@ func (h *VideoHandler) GenerateSRT(jobID string, audioPaths []string, texts []st
 		duration, err := utils.GetAudioDuration(audioPath)
 		if err != nil {
 			return "", fmt.Errorf("failed to get audio duration for %s: %w", audioPath, err)
-		}
-
-		// Account for crossfade overlap for all chunks except the first one
-		if i > 0 {
-			currentOffset -= h.cfg.AudioCrossfadeDuration
 		}
 
 		start := currentOffset

@@ -13,8 +13,9 @@ import (
 // Config holds all application configuration
 type Config struct {
 	// Server
-	Port    string
-	TempDir string
+	Port     string
+	TempDir  string
+	CacheDir string
 
 	// Output directory for saved videos
 	OutputDir string
@@ -60,6 +61,7 @@ func LoadConfig() (*Config, error) {
 		Port:      getEnv("PORT", "8080"),
 		TempDir:   getEnv("TEMP_DIR", "./temp"),
 		OutputDir: getEnv("OUTPUT_DIR", "../ai-videos"),
+		CacheDir:  getEnv("CACHE_DIR", "./cache"),
 
 		// Parse API keys
 		TTSAPIKeys:       parseAPIKeys(getEnv("TTS_API_KEYS", "")),
@@ -89,7 +91,7 @@ func LoadConfig() (*Config, error) {
 
 		// Rate limiting
 		MaxConcurrentTTSRequests:   getEnvAsInt("MAX_CONCURRENT_TTS_REQUESTS", 1),
-		MaxConcurrentVideoRequests: getEnvAsInt("MAX_CONCURRENT_VIDEO_REQUESTS", 2),
+		MaxConcurrentVideoRequests: getEnvAsInt("MAX_CONCURRENT_VIDEO_REQUESTS", 5),
 		RetryDelaySeconds:          getEnvAsInt("RETRY_DELAY_SECONDS", 60),
 	}
 

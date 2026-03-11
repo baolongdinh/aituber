@@ -481,3 +481,32 @@ func ImageToVideo(imagePath, outputPath string, duration float64, orientation st
 	}
 	return RunFFmpegCommand(args)
 }
+
+// BurnSubtitles burns (hardcodes) subtitles from an SRT file into a video.
+// orientation: "portrait" (TikTok) or "landscape" (YouTube).
+func BurnSubtitles(inputPath, srtPath, outputPath, orientation string) error {
+	var style string
+	if orientation == "portrait" {
+		// TikTok style: Yellow text, bold, large, high margin to avoid UI overlap
+		style = "Fontname=Ubuntu Sans,Fontsize=24,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=120,Bold=1"
+	} else {
+		// YouTube style: White text, semi-bold, medium, standard margin
+		style = "Fontname=Ubuntu Sans,Fontsize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=1,Alignment=2,MarginV=50,Bold=1"
+	}
+
+	// FFmpeg subtitles filter needs specific escaping for windows/linux paths
+	// We use the simpler syntax first
+	filter := fmt.Sprintf("subtitles='%s':force_style='%s'", filepath.ToSlash(srtPath), style)
+
+	args := []string{
+		"-i", inputPath,
+		"-vf", filter,
+		"-c:a", "copy", // keep original audio
+		"-c:v", "libx264",
+		"-preset", "medium",
+		"-crf", "20",
+		"-y", outputPath,
+	}
+
+	return RunFFmpegCommand(args)
+}
