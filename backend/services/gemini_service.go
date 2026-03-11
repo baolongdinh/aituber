@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -697,22 +696,22 @@ func (gs *GeminiService) callGeminiRaw(prompt string, temperature float64, maxTo
 	return "", fmt.Errorf("callGeminiRaw failed after %d retries: %w", maxRetries, lastErr)
 }
 
-// extractJSON finds the first JSON block [...] or {...} in a string using regex
+// extractJSON finds the maximum possible JSON block [...] or {...} in a string.
+// This is more robust than non-greedy regex as it handles nested brackets correctly.
 func (gs *GeminiService) extractJSON(text string) string {
-	// First, try to find an array [...] (non-greedy to get first block)
-	reArray := regexp.MustCompile(`(?s)\[.*?\]`)
-	matchArray := reArray.FindString(text)
-	if matchArray != "" {
-		return matchArray
+	// Look for array
+	startIdx := strings.Index(text, "[")
+	endIdx := strings.LastIndex(text, "]")
+	if startIdx != -1 && endIdx != -1 && endIdx > startIdx {
+		return text[startIdx : endIdx+1]
 	}
 
-	// Then, try to find an object {...} (non-greedy)
-	reObject := regexp.MustCompile(`(?s)\{.*?\}`)
-	matchObject := reObject.FindString(text)
-	if matchObject != "" {
-		return matchObject
+	// Look for object
+	startIdx = strings.Index(text, "{")
+	endIdx = strings.LastIndex(text, "}")
+	if startIdx != -1 && endIdx != -1 && endIdx > startIdx {
+		return text[startIdx : endIdx+1]
 	}
 
-	// Fallback to original text if no matches found
 	return text
 }

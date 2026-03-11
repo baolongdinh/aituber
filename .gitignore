@@ -20,6 +20,8 @@ frontend/.vite/
 *.swp
 *.swo
 
+docs/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -173,206 +173,322 @@ const handleReset = () => {
 </script>
 
 <style>
+/* ── Design Tokens ── */
+:root {
+  --bg-deep: #08080c;
+  --card-bg: rgba(255, 255, 255, 0.03);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(13, 13, 18, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  
+  --text-main: #ffffff;
+  --text-muted: rgba(255, 255, 255, 0.45);
+  --text-dim: rgba(255, 255, 255, 0.2);
+  
+  --accent-yt: #ff0000;
+  --accent-yt-glow: rgba(255, 0, 0, 0.4);
+  --accent-tk: #a14bff;
+  --accent-tk-alt: #ff3f6c;
+  --accent-tk-glow: rgba(161, 75, 255, 0.4);
+  
+  --radius-lg: 18px;
+  --radius-md: 12px;
+  --radius-full: 9999px;
+  
+  --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 /* ── Reset & Base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  background: #0d0d12;
-  color: #fff;
+  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  background: var(--bg-deep);
+  color: var(--text-main);
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
-/* ── App shell ── */
+/* ── App Shell ── */
 .app {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   position: relative;
-  overflow-x: hidden;
-  transition: --accent 0.4s;
+  z-index: 1;
 }
 
-/* Background blobs */
+/* Dynamic Background Blobs */
 .bg-blob {
   position: fixed;
   border-radius: 50%;
   pointer-events: none;
-  filter: blur(80px);
-  opacity: 0.12;
-  z-index: 0;
-}
-.blob-1 {
-  width: 500px; height: 500px;
-  top: -100px; left: -100px;
-}
-.blob-2 {
-  width: 400px; height: 400px;
-  bottom: -80px; right: -80px;
+  filter: blur(100px);
+  opacity: 0.15;
+  z-index: -1;
+  transition: all 1s ease;
+  animation: blobFloat 20s infinite alternate cubic-bezier(0.45, 0, 0.55, 1);
 }
 
-/* Platform color themes */
-.app.youtube .blob-1 { background: #ff0000; }
-.app.youtube .blob-2 { background: #cc0000; }
-.app.tiktok .blob-1 { background: #a14bff; }
-.app.tiktok .blob-2 { background: #ff3f6c; }
+@keyframes blobFloat {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(50px, 30px) scale(1.1); }
+  100% { transform: translate(-30px, 60px) scale(0.9); }
+}
+
+.blob-1 { width: 600px; height: 600px; top: -150px; left: -100px; }
+.blob-2 { width: 500px; height: 500px; bottom: -100px; right: -50px; }
+
+.app.youtube .blob-1 { background: var(--accent-yt); opacity: 0.12; }
+.app.youtube .blob-2 { background: #600000; opacity: 0.08; }
+.app.tiktok .blob-1 { background: var(--accent-tk); opacity: 0.12; }
+.app.tiktok .blob-2 { background: var(--accent-tk-alt); opacity: 0.1; }
 
 /* ── Header ── */
 .app-header {
   position: sticky;
   top: 0;
-  z-index: 10;
-  background: rgba(13,13,18,0.85);
-  backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  z-index: 100;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+  padding: 12px 0;
 }
+
 .header-inner {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 14px 24px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.logo { display: flex; align-items: center; gap: 12px; }
-.logo-icon { font-size: 1.8rem; }
-.logo-text { display: flex; flex-direction: column; }
-.logo-main { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.02em; }
-.logo-sub { font-size: 0.72rem; color: rgba(255,255,255,0.4); margin-top: -2px; }
-.logo-badge {
-  font-size: 0.68rem;
-  background: rgba(255,255,255,0.07);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 20px;
-  padding: 3px 10px;
-  color: rgba(255,255,255,0.45);
-  white-space: nowrap;
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: var(--transition-fast);
 }
 
+.logo:hover { transform: scale(1.02); }
+
+.logo-icon {
+  font-size: 2rem;
+  filter: drop-shadow(0 0 8px rgba(255,255,255,0.3));
+}
+
+.logo-text { display: flex; flex-direction: column; line-height: 1.1; }
+.logo-main {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: linear-gradient(to right, #fff, #a0a0a0);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.logo-sub {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.logo-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Platform Switcher */
 .platform-switch {
   display: flex;
-  gap: 6px;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
   padding: 4px;
+  gap: 4px;
 }
+
 .switch-btn {
   padding: 8px 18px;
-  border-radius: 9px;
+  border-radius: 10px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.45);
+  color: var(--text-muted);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  font-family: inherit;
+  transition: var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.switch-btn.active {
-  background: rgba(255,255,255,0.1);
-  color: #fff;
-}
-.app.youtube .switch-btn.active { background: rgba(255,0,0,0.15); color: #ff6060; }
-.app.tiktok .switch-btn.active { background: rgba(161,75,255,0.2); color: #c084fc; }
 
-/* ── Main ── */
+.switch-btn:hover { color: #fff; background: rgba(255,255,255,0.03); }
+
+.switch-btn.active {
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+.app.youtube .switch-btn.active {
+  background: rgba(255, 0, 0, 0.15);
+  color: #ff5050;
+  border: 1px solid rgba(255,0,0,0.2);
+}
+
+.app.tiktok .switch-btn.active {
+  background: linear-gradient(135deg, rgba(161,75,255,0.2), rgba(255,63,108,0.2));
+  color: #d8b4fe;
+  border: 1px solid rgba(161,75,255,0.2);
+}
+
+/* ── Main Content ── */
 .main-content {
   flex: 1;
   max-width: 1200px;
   margin: 0 auto;
   width: 100%;
-  padding: 32px 24px;
-  position: relative;
-  z-index: 1;
+  padding: 40px 24px;
 }
 
 .content-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-@media (max-width: 900px) {
-  .content-grid { grid-template-columns: 1fr; }
+  grid-template-columns: 440px 1fr;
+  gap: 32px;
+  align-items: start;
 }
 
-.panel { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 1000px) {
+  .content-grid { grid-template-columns: 1fr; max-width: 600px; margin: 0 auto; }
+}
+
+.panel { display: flex; flex-direction: column; gap: 24px; }
 
 .panel-card {
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 16px;
-  padding: 20px;
-  backdrop-filter: blur(8px);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  transition: var(--transition-smooth);
+  animation: cardEntry 0.6s var(--transition-bounce) backwards;
 }
 
-/* ── Generate button ── */
+@keyframes cardEntry {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.left-panel .panel-card:nth-child(1) { animation-delay: 0.1s; }
+.left-panel .panel-card:nth-child(2) { animation-delay: 0.2s; }
+.right-panel .panel-card:nth-child(1) { animation-delay: 0.3s; }
+.right-panel .panel-card:nth-child(2) { animation-delay: 0.4s; }
+
+.panel-card:hover {
+  border-color: rgba(255,255,255,0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+
+/* ── Primary Action Button ── */
 .generate-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 16px 24px;
+  padding: 18px 24px;
   border: none;
-  border-radius: 14px;
-  font-size: 1rem;
-  font-weight: 700;
+  border-radius: var(--radius-lg);
+  font-size: 1.05rem;
+  font-weight: 800;
   cursor: pointer;
-  font-family: inherit;
-  transition: all 0.25s;
+  transition: var(--transition-bounce);
   position: relative;
   overflow: hidden;
+  letter-spacing: 0.02em;
 }
 
-.app.youtube .generate-btn {
-  background: linear-gradient(135deg, #ff4444, #cc0000);
-  color: #fff;
-  box-shadow: 0 4px 24px rgba(255,68,68,0.35);
+.generate-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: 0.5s;
 }
-.app.youtube .generate-btn:hover:not(.disabled) {
-  box-shadow: 0 6px 32px rgba(255,68,68,0.5);
-  transform: translateY(-2px);
+
+.generate-btn:hover::before { left: 100%; }
+
+.app.youtube .generate-btn {
+  background: linear-gradient(135deg, #ff4d4d, #b30000);
+  color: #fff;
+  box-shadow: 0 8px 25px var(--accent-yt-glow);
 }
 
 .app.tiktok .generate-btn {
-  background: linear-gradient(135deg, #a14bff, #ff3f6c);
+  background: linear-gradient(135deg, var(--accent-tk), var(--accent-tk-alt));
   color: #fff;
-  box-shadow: 0 4px 24px rgba(161,75,255,0.4);
+  box-shadow: 0 8px 25px var(--accent-tk-glow);
 }
-.app.tiktok .generate-btn:hover:not(.disabled) {
-  box-shadow: 0 6px 32px rgba(161,75,255,0.6);
-  transform: translateY(-2px);
+
+.generate-btn:hover:not(.disabled) {
+  transform: translateY(-3px) scale(1.02);
+  filter: brightness(1.1);
 }
+
+.generate-btn:active:not(.disabled) { transform: translateY(0) scale(0.98); }
 
 .generate-btn.disabled {
-  opacity: 0.4;
+  background: #252529 !important;
+  color: var(--text-dim) !important;
+  box-shadow: none !important;
   cursor: not-allowed;
-  transform: none !important;
+  opacity: 0.5;
 }
-.generate-btn.loading { opacity: 0.7; cursor: wait; }
 
-.btn-icon { font-size: 1.2rem; }
-.btn-spinner {
-  font-size: 1.1rem;
-  display: inline-block;
-  animation: spin 1s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
+.btn-icon { font-size: 1.4rem; }
 
 /* ── Footer ── */
 .app-footer {
   text-align: center;
-  padding: 16px 24px;
-  font-size: 0.75rem;
-  color: rgba(255,255,255,0.2);
+  padding: 30px 24px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
   display: flex;
   justify-content: center;
-  gap: 10px;
-  border-top: 1px solid rgba(255,255,255,0.04);
-  position: relative;
-  z-index: 1;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--glass-border);
+  margin-top: auto;
 }
-.sep { opacity: 0.4; }
+
+.sep { width: 4px; height: 4px; border-radius: 50%; background: var(--text-dim); }
+
+/* ── Custom Utilities ── */
+.mt-3 { margin-top: 16px; }
+.mb-2 { margin-bottom: 12px; }
+
+/* Shared Component Styles Override (to avoid scoping issues) */
+input[type="text"], textarea {
+  transition: var(--transition-fast) !important;
+}
 </style>
