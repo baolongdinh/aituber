@@ -127,7 +127,6 @@ CẤU TRÚC BẮT BUỘC:
 
 YÊU CẦU CHẤT LƯỢNG (PO REQUIREMENTS):
 - Độ dài: Khoảng 300 - 450 từ (tiếng Việt). Đảm bảo thời lượng đọc tốn khoảng ~1m40s.
-- NO CLIFFHANGERS: TUYỆT ĐỐI KHÔNG làm nội dung dở dang kiểu "Đón xem Phần 2", "Follow để xem tiếp". Video phải có một kết luận TRỌN VẸN.
 - Giọng điệu (Tone): Cuốn hút, chân thật, như một chuyên gia đang ngồi tâm sự mỏng với người xem. Không dùng từ ngữ sáo rỗng hay văn phong rập khuôn của AI. Hãy dùng ngôn ngữ đời thường, sắc sảo.
 - Có nhịp điệu (Pacing): Câu ngắn xen lẫn câu dài để tạo nhịp điệu khi đọc.
 - Mỗi "text" segment (đoạn) phải dài khoảng 25-45 từ. Số lượng segment nên rơi vào khoảng 8 đến 12 segments để hình ảnh thay đổi liên tục, giữ chân người xem.

@@ -3,6 +3,8 @@ package main
 import (
 	"aituber/config"
 	"aituber/handlers"
+	"aituber/services"
+	"aituber/utils"
 	"fmt"
 	"log"
 	"net/http"
@@ -41,8 +43,55 @@ func main() {
 		})
 	})
 
-	// Initialize video handler
-	videoHandler := handlers.NewVideoHandler(cfg)
+	// --- SETUP DEPENDENCY INJECTION ---
+	// 1. API pools
+	ttsPool := utils.NewAPIKeyPool(cfg.TTSAPIKeys)
+	var videoPool *utils.APIKeyPool
+	if len(cfg.VideoAPIKeys) > 0 {
+		videoPool = utils.NewAPIKeyPool(cfg.VideoAPIKeys)
+	} else {
+		videoPool = utils.NewAPIKeyPool([]string{"placeholder"})
+	}
+
+	// 2. Job Manager
+	jobManager := services.NewJobManager()
+
+	// 3. Core Services
+	textProcessor := services.NewTextProcessor(cfg.AudioChunkSize, cfg.VideoSegmentDuration)
+	audioService := services.NewAudioService(
+		ttsPool,
+		cfg.TempDir,
+		cfg.AudioBitrate,
+		cfg.AudioSampleRate,
+		cfg.AudioCrossfadeDuration,
+	)
+	videoService := services.NewVideoService(
+		videoPool,
+		cfg.TempDir,
+		cfg.VideoBitrate,
+		cfg.VideoResolution,
+		cfg.VideoFPS,
+		cfg.VideoTransitionDuration,
+	)
+	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
+	hfService := services.NewHuggingFaceService(cfg.HuggingFaceToken)
+	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, geminiService, hfService)
+	composerService := services.NewComposerService(cfg.VideoBitrate)
+
+	// 4. Orchestrator Workflow
+	workflowSvc := services.NewVideoWorkflowService(
+		cfg,
+		jobManager,
+		textProcessor,
+		audioService,
+		videoService,
+		stockVideoService,
+		composerService,
+		geminiService,
+	)
+
+	// 5. Initialize video handler
+	videoHandler := handlers.NewVideoHandler(cfg, jobManager, workflowSvc, geminiService)
 
 	// API routes
 	api := router.Group("/api")

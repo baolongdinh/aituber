@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"aituber/utils"
 	"os"
 	"path/filepath"
 	"testing"
@@ -27,11 +28,10 @@ func TestVideoHandler_BuildFinalConcatList(t *testing.T) {
 
 	mainVideoPath := "/tmp/mock_main_video.mp4"
 
-	// Create a dummy handler (we only need its methods, no complex instantiation needed)
-	h := &VideoHandler{}
+	// No need for VideoHandler instance for this utility test
 
 	t.Run("YouTube Platform - Includes Intro and Outro", func(t *testing.T) {
-		concatList := h.BuildFinalConcatList("youtube", introPath, outroPath, mainVideoPath)
+		concatList := utils.BuildFinalConcatList("youtube", introPath, outroPath, mainVideoPath)
 
 		if len(concatList) != 3 {
 			t.Errorf("Expected concat list length to be 3 (intro, main, outro), got %d", len(concatList))
@@ -49,7 +49,7 @@ func TestVideoHandler_BuildFinalConcatList(t *testing.T) {
 	})
 
 	t.Run("TikTok Platform - Excludes Intro and Outro", func(t *testing.T) {
-		concatList := h.BuildFinalConcatList("tiktok", introPath, outroPath, mainVideoPath)
+		concatList := utils.BuildFinalConcatList("tiktok", introPath, outroPath, mainVideoPath)
 
 		if len(concatList) != 1 {
 			t.Errorf("Expected concat list length to be 1 (main video only for tiktok), got %d", len(concatList))
@@ -64,7 +64,7 @@ func TestVideoHandler_BuildFinalConcatList(t *testing.T) {
 		nonExistentIntro := filepath.Join(tmpDir, "does_not_exist_intro.mp4")
 		nonExistentOutro := filepath.Join(tmpDir, "does_not_exist_outro.mp4")
 
-		concatList := h.BuildFinalConcatList("youtube", nonExistentIntro, nonExistentOutro, mainVideoPath)
+		concatList := utils.BuildFinalConcatList("youtube", nonExistentIntro, nonExistentOutro, mainVideoPath)
 
 		if len(concatList) != 1 {
 			t.Errorf("Expected concat list length to be 1 when static files are missing, got %d", len(concatList))
