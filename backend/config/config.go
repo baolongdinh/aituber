@@ -13,16 +13,18 @@ import (
 // Config holds all application configuration
 type Config struct {
 	// Server
-	Port    string
-	TempDir string
+	Port     string
+	TempDir  string
+	CacheDir string
 
 	// Output directory for saved videos
 	OutputDir string
 
 	// API Keys Pool
-	TTSAPIKeys    []string
-	VideoAPIKeys  []string
-	GeminiAPIKeys []string
+	TTSAPIKeys       []string
+	ElevenLabsAPIKey string
+	VideoAPIKeys     []string
+	GeminiAPIKeys    []string
 
 	// Processing Settings
 	MaxTextLength        int
@@ -41,8 +43,8 @@ type Config struct {
 	VideoTransitionType     string
 	VideoTransitionDuration float64
 
-	PexelsAPIKey     string
-	HuggingFaceToken string
+	PexelsAPIKey      string
+	HuggingFaceTokens []string
 
 	// Rate Limiting
 	MaxConcurrentTTSRequests   int
@@ -59,16 +61,18 @@ func LoadConfig() (*Config, error) {
 		Port:      getEnv("PORT", "8080"),
 		TempDir:   getEnv("TEMP_DIR", "./temp"),
 		OutputDir: getEnv("OUTPUT_DIR", "../ai-videos"),
+		CacheDir:  getEnv("CACHE_DIR", "./cache"),
 
 		// Parse API keys
-		TTSAPIKeys:    parseAPIKeys(getEnv("TTS_API_KEYS", "")),
-		VideoAPIKeys:  parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
-		GeminiAPIKeys: parseAPIKeys(getEnv("GEMINI_API_KEYS", "")),
+		TTSAPIKeys:       parseAPIKeys(getEnv("TTS_API_KEYS", "")),
+		ElevenLabsAPIKey: getEnv("ELEVENLABS_API_KEY", ""),
+		VideoAPIKeys:     parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
+		GeminiAPIKeys:    parseAPIKeys(getEnv("GEMINI_API_KEYS", "")),
 
 		// Processing settings
 		MaxTextLength:        getEnvAsInt("MAX_TEXT_LENGTH", 50000),
-		AudioChunkSize:       getEnvAsInt("AUDIO_CHUNK_SIZE", 4500),
-		VideoSegmentDuration: getEnvAsFloat("VIDEO_SEGMENT_DURATION", 5.5),
+		AudioChunkSize:       getEnvAsInt("AUDIO_CHUNK_SIZE", 8000),
+		VideoSegmentDuration: getEnvAsFloat("VIDEO_SEGMENT_DURATION", 10.0),
 
 		// Quality settings
 		AudioSampleRate: getEnvAsInt("AUDIO_SAMPLE_RATE", 44100),
@@ -82,12 +86,12 @@ func LoadConfig() (*Config, error) {
 		VideoTransitionType:     getEnv("VIDEO_TRANSITION_TYPE", "fade"),
 		VideoTransitionDuration: getEnvAsFloat("VIDEO_TRANSITION_DURATION", 0.5),
 
-		PexelsAPIKey:     getEnv("PEXELS_API_KEY", ""),
-		HuggingFaceToken: getEnv("HF_TOKEN", ""),
+		PexelsAPIKey:      getEnv("PEXELS_API_KEY", ""),
+		HuggingFaceTokens: parseAPIKeys(getEnv("HF_TOKEN", "")),
 
 		// Rate limiting
 		MaxConcurrentTTSRequests:   getEnvAsInt("MAX_CONCURRENT_TTS_REQUESTS", 1),
-		MaxConcurrentVideoRequests: getEnvAsInt("MAX_CONCURRENT_VIDEO_REQUESTS", 2),
+		MaxConcurrentVideoRequests: getEnvAsInt("MAX_CONCURRENT_VIDEO_REQUESTS", 5),
 		RetryDelaySeconds:          getEnvAsInt("RETRY_DELAY_SECONDS", 60),
 	}
 

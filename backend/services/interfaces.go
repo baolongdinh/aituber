@@ -1,11 +1,16 @@
 package services
 
-import "aituber/models"
+import (
+	"aituber/models"
+	"context"
+)
 
 // IScriptGenerator defines the interface for generating scripts
 type IScriptGenerator interface {
 	GenerateYouTubeScript(topic string) ([]models.VideoSegment, error)
 	GenerateTikTokScript(topic string) ([]models.VideoSegment, error)
+	GenerateSeriesOutline(topic, platform string, numParts int) ([]models.SeriesPartOutline, error)
+	GenerateSeriesPartScript(topic, platform string, outline []models.SeriesPartOutline, partIdx int) ([]models.VideoSegment, error)
 	HasKeys() bool
 }
 
@@ -17,7 +22,7 @@ type IAudioService interface {
 
 // IStockVideoService defines the interface for fetching stock clips
 type IStockVideoService interface {
-	PrepareSegmentVideo(keywords string, audioDuration float64, jobID string, segIndex int, orientation string) (string, error)
+	PrepareSegmentVideo(ctx context.Context, keywords string, visualDesc string, t2vModel, t2vProvider string, audioDuration float64, jobID string, segIndex int, orientation string) (string, error)
 }
 
 // IComposerService defines the interface for combining audio and video

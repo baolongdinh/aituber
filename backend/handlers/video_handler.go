@@ -4,6 +4,7 @@ import (
 	"aituber/config"
 	"aituber/models"
 	"aituber/services"
+	"aituber/utils"
 	"fmt"
 	"net/http"
 	"os"
@@ -186,8 +187,8 @@ func (h *VideoHandler) Download(c *gin.Context) {
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=video_%s.mp4", jobID))
 	c.File(job.VideoPath)
 
-	// Since we don't have circular dep to utils from Handler here as easily, we'll assume utils is imported
-	// (Check util import up top)
+	// Schedule cleanup after download (1 hour)
+	go utils.ScheduleCleanup(h.cfg.TempDir, jobID, 1*time.Hour)
 }
 
 // slugify converts a string to a URL-friendly slug

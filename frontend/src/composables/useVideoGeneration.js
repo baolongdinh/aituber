@@ -11,36 +11,63 @@ export function useVideoGeneration() {
   const error = ref(null);
   const jobId = ref(null);
 
+  // Series-specific state
+  const isSeries = ref(false);
+  const seriesParts = ref([]);
+  const seriesId = ref(null);
+
   let pollInterval = null;
 
-  const pollStatus = async (id) => {
+  const pollStatus = async (id, checkingSeries) => {
+    // Clear existing if any
+    if (pollInterval) clearInterval(pollInterval);
+
     pollInterval = setInterval(async () => {
       try {
-        const status = await videoApi.getStatus(id);
+        if (checkingSeries) {
+          const status = await videoApi.getSeriesStatus(id);
+          progress.value = status.overall_progress;
+          jobStatus.value = status.status;
+          seriesParts.value = status.parts || [];
 
-        progress.value = status.progress;
-        currentStep.value = status.current_step;
-        jobStatus.value = status.status;
+          if (status.status === "completed" || status.status === "failed" || status.status === "partial_failed") {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            generating.value = false;
+            if (status.status === "failed") {
+              error.value = "Quá trình tạo Series thất bại";
+            }
+          }
+        } else {
+          // Single video checking
+          const status = await videoApi.getStatus(id);
+          progress.value = status.progress;
+          currentStep.value = status.current_step;
+          jobStatus.value = status.status;
 
-        if (status.status === "completed") {
-          clearInterval(pollInterval);
-          videoUrl.value = status.video_url;
-          savedPath.value = status.saved_path || null;
-          generating.value = false;
-        } else if (status.status === "failed") {
-          clearInterval(pollInterval);
-          error.value = status.error || "Video generation failed";
-          generating.value = false;
-          jobStatus.value = "failed";
+          if (status.status === "completed") {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            videoUrl.value = status.video_url;
+            savedPath.value = status.saved_path || null;
+            generating.value = false;
+          } else if (status.status === "failed") {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            error.value = status.error || "Video generation failed";
+            generating.value = false;
+            jobStatus.value = "failed";
+          }
         }
       } catch (err) {
         console.error("Failed to poll status:", err);
         error.value = err.message;
+        // Don't necessarily stop polling on network error, but maybe after too many?
       }
     }, 2000); // Poll every 2 seconds
   };
 
-  const generateVideo = async (topic, contentName, platform, config) => {
+  const generateVideo = async (topic, contentName, platform, config, isSeriesMode = false, numParts = 2) => {
     generating.value = true;
     error.value = null;
     progress.value = 0;
@@ -49,19 +76,40 @@ export function useVideoGeneration() {
     videoUrl.value = null;
     savedPath.value = null;
 
-    try {
-      const result = await videoApi.generateVideo({
-        topic,
-        content_name: contentName,
-        platform,
-        voice: config.voice,
-        speaking_speed: config.speaking_speed,
-      });
+    isSeries.value = isSeriesMode;
+    seriesParts.value = [];
+    seriesId.value = null;
+    jobId.value = null;
 
-      jobId.value = result.job_id;
-      pollStatus(result.job_id);
+    try {
+      if (isSeriesMode) {
+        const result = await videoApi.generateSeries({
+          topic,
+          content_name: contentName,
+          platform,
+          num_parts: numParts,
+          voice: config.voice,
+          speaking_speed: config.speaking_speed,
+          tts_provider: config.tts_provider,
+        });
+
+        seriesId.value = result.series_id;
+        pollStatus(result.series_id, true);
+      } else {
+        const result = await videoApi.generateVideo({
+          topic,
+          content_name: contentName,
+          platform,
+          voice: config.voice,
+          speaking_speed: config.speaking_speed,
+          tts_provider: config.tts_provider,
+        });
+
+        jobId.value = result.job_id;
+        pollStatus(result.job_id, false);
+      }
     } catch (err) {
-      console.error("Failed to start video generation:", err);
+      console.error("Failed to start generation:", err);
       error.value = err.response?.data?.error || err.message;
       generating.value = false;
       jobStatus.value = "failed";
@@ -80,6 +128,29 @@ export function useVideoGeneration() {
     savedPath.value = null;
     error.value = null;
     jobId.value = null;
+    isSeries.value = false;
+    seriesParts.value = [];
+    seriesId.value = null;
+  };
+
+  const retryPart = async (idx) => {
+    if (!seriesId.value) return;
+
+    try {
+      error.value = null;
+      jobStatus.value = "processing";
+      generating.value = true;
+
+      await videoApi.retrySeriesPart(seriesId.value, idx);
+
+      // If polling isn't active, restart it
+      if (!pollInterval) {
+        pollStatus(seriesId.value, true);
+      }
+    } catch (err) {
+      console.error("Failed to retry part:", err);
+      error.value = `Retry failed: ${err.response?.data?.error || err.message}`;
+    }
   };
 
   return {
@@ -91,7 +162,12 @@ export function useVideoGeneration() {
     savedPath,
     error,
     jobId,
+    isSeries,
+    seriesParts,
+    seriesId,
     generateVideo,
+    retryPart,
     reset,
   };
 }
+

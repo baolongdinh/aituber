@@ -4,6 +4,27 @@
       <span>🎙️</span> Cài đặt giọng đọc
     </div>
 
+    <!-- TTS Provider Selector -->
+    <div class="field-group">
+      <label class="field-label">Công nghệ TTS</label>
+      <div class="provider-toggle">
+        <button 
+          class="provider-btn" 
+          :class="{ active: localConfig.tts_provider !== 'elevenlabs' }"
+          @click="setProvider('fpt')"
+        >
+          FPT.AI (Standard)
+        </button>
+        <button 
+          class="provider-btn" 
+          :class="{ active: localConfig.tts_provider === 'elevenlabs' }"
+          @click="setProvider('elevenlabs')"
+        >
+          ElevenLabs (Pro)
+        </button>
+      </div>
+    </div>
+
     <!-- Voice Selector -->
     <div class="field-group">
       <label class="field-label">Giọng đọc</label>
@@ -64,6 +85,7 @@ const props = defineProps({
     default: () => ({
       voice: 'banmai',
       speaking_speed: 1.0,
+      tts_provider: 'fpt',
     })
   }
 })
@@ -83,12 +105,19 @@ const setVoice = (v) => {
   emitUpdate()
 }
 
+const setProvider = (p) => {
+  localConfig.tts_provider = p
+  emitUpdate()
+}
+
 const voiceOptions = [
   { value: 'banmai', name: 'Ban Mai', gender: '👩', region: 'Bắc' },
   { value: 'leminh', name: 'Lê Minh', gender: '👩', region: 'Nam' },
   { value: 'minhquang', name: 'Minh Quang', gender: '👨', region: 'Bắc' },
   { value: 'giahuy', name: 'Gia Huy', gender: '👨', region: 'Nam' },
 ]
+
+
 </script>
 
 <style scoped>
@@ -112,6 +141,55 @@ const voiceOptions = [
 }
 
 .field-group { display: flex; flex-direction: column; gap: 10px; }
+
+.provider-toggle {
+  display: flex;
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.provider-btn {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.provider-btn.active {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+
+.model-select {
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 10px;
+  color: #fff;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-select:focus {
+  border-color: rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+}
+
+.model-select option {
+  background: #1a1a1a;
+  color: #fff;
+}
 
 .field-label {
   display: flex;
@@ -169,6 +247,7 @@ const voiceOptions = [
 .speed-slider {
   width: 100%;
   -webkit-appearance: none;
+  appearance: none;
   height: 4px;
   border-radius: 4px;
   background: rgba(255,255,255,0.15);
@@ -176,6 +255,7 @@ const voiceOptions = [
 }
 .speed-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
+  appearance: none;
   width: 18px;
   height: 18px;
   border-radius: 50%;

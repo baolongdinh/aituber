@@ -60,6 +60,7 @@ func main() {
 	textProcessor := services.NewTextProcessor(cfg.AudioChunkSize, cfg.VideoSegmentDuration)
 	audioService := services.NewAudioService(
 		ttsPool,
+		cfg.ElevenLabsAPIKey,
 		cfg.TempDir,
 		cfg.AudioBitrate,
 		cfg.AudioSampleRate,
@@ -74,8 +75,8 @@ func main() {
 		cfg.VideoTransitionDuration,
 	)
 	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
-	hfService := services.NewHuggingFaceService(cfg.HuggingFaceToken)
-	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, geminiService, hfService)
+	hfService := services.NewHuggingFaceService(cfg.HuggingFaceTokens)
+	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService)
 	composerService := services.NewComposerService(cfg.VideoBitrate)
 
 	// 4. Orchestrator Workflow
@@ -90,8 +91,9 @@ func main() {
 		geminiService,
 	)
 
-	// 5. Initialize video handler
+	// 5. Initialize handlers
 	videoHandler := handlers.NewVideoHandler(cfg, jobManager, workflowSvc, geminiService)
+	seriesHandler := handlers.NewSeriesHandler(cfg, jobManager, workflowSvc, geminiService)
 
 	// API routes
 	api := router.Group("/api")
@@ -100,6 +102,11 @@ func main() {
 		api.GET("/status/:job_id", videoHandler.GetStatus)
 		api.GET("/download/:job_id", videoHandler.Download)
 		api.GET("/download-subtitle/:job_id", videoHandler.DownloadSubtitle)
+
+		// Series routes
+		api.POST("/generate-series", seriesHandler.GenerateSeries)
+		api.GET("/series-status/:series_id", seriesHandler.GetSeriesStatus)
+		api.POST("/retry-series-part/:series_id/:part_index", seriesHandler.RetrySeriesPart)
 	}
 
 	// Start server

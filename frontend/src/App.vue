@@ -46,6 +46,8 @@
             <TopicInput
               v-model:topic="topic"
               v-model:contentName="contentName"
+              v-model:isSeries="isSeriesInput"
+              v-model:numParts="numPartsInput"
               :platform="platform"
             />
           </div>
@@ -63,7 +65,7 @@
           >
             <span v-if="generating" class="btn-spinner">⟳</span>
             <span v-else class="btn-icon">{{ platform === 'youtube' ? '🎬' : '⚡' }}</span>
-            <span>{{ generating ? 'Đang tạo video...' : 'Tạo Video' }}</span>
+            <span>{{ generating ? 'Đang tạo video...' : (isSeriesInput ? `Tạo Series ${numPartsInput} phần` : 'Tạo Video') }}</span>
           </button>
         </div>
 
@@ -75,15 +77,20 @@
               :progress="progress"
               :current-step="currentStep"
               :error="error"
+              :is-series="isSeries"
+              :parts="seriesParts"
+              @retry-part="retryPart"
             />
           </div>
 
-          <div class="panel-card" v-if="videoUrl">
+          <div class="panel-card" v-if="videoUrl || (isSeries && hasCompletedParts)">
             <ResultPreview
               :video-url="videoUrl"
               :job-id="jobId"
               :saved-path="savedPath"
               :platform="platform"
+              :is-series="isSeries"
+              :parts="seriesParts"
               @reset="handleReset"
             />
           </div>
@@ -120,6 +127,8 @@ const setPlatform = (p) => {
 // Input state
 const topic = ref('')
 const contentName = ref('')
+const isSeriesInput = ref(false)
+const numPartsInput = ref(2)
 const config = ref({
   voice: 'banmai',
   speaking_speed: 1.0,
@@ -135,22 +144,31 @@ const {
   savedPath,
   error,
   jobId,
+  isSeries,
+  seriesParts,
+  seriesId,
   generateVideo,
+  retryPart,
   reset,
 } = useVideoGeneration()
 
 // Computed
 const canGenerate = computed(() => topic.value.trim().length > 3 && !generating.value)
+const hasCompletedParts = computed(() => {
+  return seriesParts.value && seriesParts.value.some(p => p.status === 'completed')
+})
 
 // Methods
 const handleGenerate = async () => {
-  await generateVideo(topic.value.trim(), contentName.value.trim(), platform.value, config.value)
+  await generateVideo(topic.value.trim(), contentName.value.trim(), platform.value, config.value, isSeriesInput.value, numPartsInput.value)
 }
 
 const handleReset = () => {
   reset()
   topic.value = ''
   contentName.value = ''
+  isSeriesInput.value = false
+  numPartsInput.value = 2
 }
 </script>
 

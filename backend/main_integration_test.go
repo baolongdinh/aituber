@@ -54,6 +54,12 @@ func (m *MockGeminiIntegration) GenerateTikTokScript(topic string) ([]models.Vid
 	return []models.VideoSegment{{Text: "Test segment"}}, nil
 }
 func (m *MockGeminiIntegration) HasKeys() bool { return true }
+func (m *MockGeminiIntegration) GenerateSeriesOutline(topic, platform string, numParts int) ([]models.SeriesPartOutline, error) {
+	return nil, nil
+}
+func (m *MockGeminiIntegration) GenerateSeriesPartScript(topic, platform string, outline []models.SeriesPartOutline, partIdx int) ([]models.VideoSegment, error) {
+	return nil, nil
+}
 
 func TestAPI_Integration_FullFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)

@@ -1,39 +1,49 @@
 package services
 
 import (
-	"encoding/json"
-	"strings"
 	"testing"
 )
 
-func TestJSONCleanAndUnmarshal(t *testing.T) {
-	rawInputs := []string{
-		"```json\n[{\"text\":\"Hello\",\"pexels_search_query\":\"world\"}]\n```",
-		"[{\"text\":\"Hello\",\"pexels_search_query\":\"world\"}]",
-		"  \n[{\"text\":\"Hello\",\"pexels_search_query\":\"world\"}]\n  ",
+func TestExtractJSON(t *testing.T) {
+	gs := &GeminiService{}
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string // JSON string part we expect
+	}{
+		{
+			name:     "Standard markdown blocks",
+			input:    "Sure, here is your JSON:\n```json\n[{\"text\":\"Hello\"}]\n```\nHope this helps!",
+			expected: "[{\"text\":\"Hello\"}]",
+		},
+		{
+			name:     "JSON submerged in text without blocks",
+			input:    "The data is [{\"text\":\"Direct JSON\"}] and that's it.",
+			expected: "[{\"text\":\"Direct JSON\"}]",
+		},
+		{
+			name:     "Multiple blocks (take first)",
+			input:    "Part 1: ```json\n{\"a\":1}\n``` and Part 2: ```json\n{\"b\":2}\n```",
+			expected: "{\"a\":1}",
+		},
+		{
+			name:     "Object format instead of array",
+			input:    "Here is an object: {\"status\":\"ok\"}",
+			expected: "{\"status\":\"ok\"}",
+		},
+		{
+			name:     "Messy whitespace and newlines",
+			input:    " \n  \r\n [  \n {\"id\": 1 } \n ] \n ",
+			expected: "[  \n {\"id\": 1 } \n ]",
+		},
 	}
 
-	for i, input := range rawInputs {
-		t.Run("Input "+string(rune(i+'A')), func(t *testing.T) {
-			clean := strings.TrimSpace(input)
-			clean = strings.TrimPrefix(clean, "```json")
-			clean = strings.TrimPrefix(clean, "```")
-			clean = strings.TrimSuffix(clean, "```")
-			clean = strings.TrimSpace(clean)
-
-			var segments []map[string]interface{}
-			err := json.Unmarshal([]byte(clean), &segments)
-			if err != nil {
-				t.Fatalf("Failed to parse: %v", err)
-			}
-			if len(segments) != 1 {
-				t.Fatalf("Expected 1 segment, got %d", len(segments))
-			}
-			if segments[0]["text"] != "Hello" {
-				t.Errorf("Expected 'Hello', got '%v'", segments[0]["text"])
-			}
-			if segments[0]["pexels_search_query"] != "world" {
-				t.Errorf("Expected 'world', got '%v'", segments[0]["pexels_search_query"])
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := gs.extractJSON(tt.input)
+			if result != tt.expected {
+				t.Errorf("extractJSON mismatch.\nInput: %q\nExpected: %q\nGot:      %q", tt.input, tt.expected, result)
 			}
 		})
 	}

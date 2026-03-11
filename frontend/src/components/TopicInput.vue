@@ -37,6 +37,29 @@
       />
     </div>
 
+    <!-- Series Options -->
+    <div class="input-section mt-3 series-section">
+      <label class="series-toggle-label">
+        <input type="checkbox" v-model="localIsSeries" class="series-checkbox" />
+        <span class="toggle-text">
+          <span class="label-icon">🎬</span>
+          Tạo chuỗi (Series) tự động liên kết nối tiếp
+        </span>
+      </label>
+      
+      <div v-if="localIsSeries" class="num-parts-input">
+        <label class="input-label">Số tập ({{ localNumParts }} phần)</label>
+        <div class="slider-wrap">
+          <input type="range" v-model.number="localNumParts" min="2" max="20" class="range-slider" />
+          <div class="slider-marks">
+            <span>2</span>
+            <span>10</span>
+            <span>20</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Tips -->
     <div class="tips-grid">
       <div class="tip-card" v-for="tip in currentTips" :key="tip.title">
@@ -56,10 +79,12 @@ import { computed } from 'vue'
 const props = defineProps({
   topic: { type: String, default: '' },
   contentName: { type: String, default: '' },
+  isSeries: { type: Boolean, default: false },
+  numParts: { type: Number, default: 2 },
   platform: { type: String, default: 'youtube' }
 })
 
-const emit = defineEmits(['update:topic', 'update:contentName'])
+const emit = defineEmits(['update:topic', 'update:contentName', 'update:isSeries', 'update:numParts'])
 
 const localTopic = computed({
   get: () => props.topic,
@@ -68,6 +93,14 @@ const localTopic = computed({
 const localContentName = computed({
   get: () => props.contentName,
   set: (v) => emit('update:contentName', v)
+})
+const localIsSeries = computed({
+  get: () => props.isSeries,
+  set: (v) => emit('update:isSeries', v)
+})
+const localNumParts = computed({
+  get: () => props.numParts,
+  set: (v) => emit('update:numParts', v)
 })
 
 const placeholder = computed(() => {
@@ -190,4 +223,54 @@ const currentTips = computed(() => props.platform === 'youtube' ? youtubeTips : 
 .tip-icon { font-size: 1.2rem; flex-shrink: 0; }
 .tip-title { font-weight: 600; color: rgba(255,255,255,0.85); margin-bottom: 2px; }
 .tip-desc { color: rgba(255,255,255,0.45); font-size: 0.78rem; }
+
+/* ── Series Section ── */
+.series-section {
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(255,255,255,0.15);
+  border-radius: 12px;
+  padding: 16px;
+}
+.series-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.series-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #63b3ff;
+  cursor: pointer;
+}
+.toggle-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.num-parts-input {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.slider-wrap {
+  position: relative;
+  width: 100%;
+}
+.range-slider {
+  width: 100%;
+  accent-color: #63b3ff;
+  margin-bottom: 4px;
+}
+.slider-marks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.4);
+}
 </style>

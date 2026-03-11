@@ -4,12 +4,14 @@ import (
 	"aituber/config"
 	"aituber/models"
 	"aituber/utils"
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // VideoWorkflowService orchestrates the entire video creation pipeline
@@ -78,7 +80,7 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req models.Generate
 
 	// 3. Subtitles Generation (Non-fatal)
 	s.jobManager.UpdateProgress(jobID, "Generating subtitles", 32)
-	if _, err := s.generateSRT(jobID, audioPaths, audioTexts, filepath.Join(tempDir, "output"), req.Platform); err != nil {
+	if _, err := s.GenerateSRT(jobID, audioPaths, audioTexts, filepath.Join(tempDir, "output"), req.Platform); err != nil {
 		log.Printf("[Job %s] Failed to generate subtitles: %v", jobID, err)
 	}
 
@@ -127,6 +129,12 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req models.Generate
 
 // Sub-pipeline: Script
 func (s *VideoWorkflowService) generateScript(jobID string, req models.GenerateRequest) ([]models.VideoSegment, error) {
+	// 0. Use pre-provided segments if exists
+	if len(req.Segments) > 0 {
+		log.Printf("[Job %s] Using %d pre-provided segments", jobID, len(req.Segments))
+		return req.Segments, nil
+	}
+
 	var segments []models.VideoSegment
 	script := req.Script
 
@@ -236,8 +244,16 @@ func (s *VideoWorkflowService) gatherAndConcatStockVideos(
 
 			s.jobManager.UpdateProgress(jobID, fmt.Sprintf("Fetching stock video for segment %d/%d", idx+1, len(segments)), 50+idx*30/len(segments))
 
+			// Create a per-segment context with timeout (3 mins per segment should be plenty)
+			segCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+
 			vp, err := s.stockVideoService.PrepareSegmentVideo(
+				segCtx,
 				segKeywords[idx],
+				segments[idx].VisualDescription,
+				req.T2VModel,
+				req.T2VProvider,
 				realDurations[idx],
 				jobID,
 				idx,
@@ -319,7 +335,8 @@ func (s *VideoWorkflowService) saveToOutputFolder(srcPath, platform, contentName
 	return filepath.Join("ai-videos", platform, contentName, "final_video.mp4"), nil
 }
 
-func (s *VideoWorkflowService) generateSRT(jobID string, audioPaths []string, texts []string, outputDir string, platform string) (string, error) {
+// GenerateSRT creates an SRT subtitle file based on audio durations and texts
+func (s *VideoWorkflowService) GenerateSRT(jobID string, audioPaths []string, texts []string, outputDir string, platform string) (string, error) {
 	srtPath := filepath.Join(outputDir, "subtitles.srt")
 	file, err := os.Create(srtPath)
 	if err != nil {

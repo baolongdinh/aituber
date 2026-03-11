@@ -6,25 +6,44 @@ import (
 	"unicode"
 )
 
-// vietnameseStopWords contains common Vietnamese function words to ignore
 var vietnameseStopWords = map[string]bool{
 	// pronouns / particles
 	"tôi": true, "bạn": true, "chúng": true, "ta": true, "họ": true, "mình": true,
 	"anh": true, "chị": true, "em": true, "ông": true, "bà": true, "cô": true,
+	"ai": true, "gì": true, "nào": true, "đâu": true, "sao": true, "thế": true,
 	// prepositions / conjunctions
 	"và": true, "hoặc": true, "nhưng": true, "vì": true, "nên": true, "thì": true,
 	"mà": true, "để": true, "của": true, "với": true, "trong": true, "trên": true,
 	"dưới": true, "ngoài": true, "sau": true, "trước": true, "theo": true,
 	"tại": true, "ở": true, "từ": true, "đến": true, "về": true, "qua": true,
-	// verbs (common auxiliary)
+	"cho": true, "như": true, "cùng": true, "vô": true, "bởi": true,
+	// verbs (common auxiliary/generic)
 	"là": true, "được": true, "có": true, "sẽ": true, "đã": true, "đang": true,
-	"làm": true, "cho": true, "đây": true, "đó": true, "này": true, "kia": true,
-	// quantifiers
+	"làm": true, "đây": true, "đó": true, "này": true, "kia": true, "muốn": true,
+	"biết": true, "thấy": true, "nghĩ": true, "đi": true, "ra": true, "vào": true,
+	"lên": true, "xuống": true, "lại": true, "hết": true, "rồi": true, "nhé": true,
+	"nha": true, "thôi": true,
+	// quantifiers / adverbs
 	"một": true, "các": true, "những": true, "mọi": true, "nhiều": true, "ít": true,
-	"rất": true, "cũng": true, "còn": true, "lại": true, "nữa": true, "thêm": true,
+	"rất": true, "cũng": true, "còn": true, "nữa": true, "thêm": true, "quá": true,
+	"hơn": true, "nhất": true, "chỉ": true, "luôn": true, "thường": true, "hay": true,
+	"ngay": true, "vừa": true, "mới": true, "thật": true, "khá": true,
 	// common adjectives that are too generic
-	"tốt": true, "xấu": true, "lớn": true, "nhỏ": true, "mới": true, "cũ": true,
+	"tốt": true, "xấu": true, "lớn": true, "nhỏ": true, "cũ": true,
 	"cao": true, "thấp": true, "nhanh": true, "chậm": true,
+}
+
+// narrativeBlacklist contains words common in script/video talk but irrelevant to visuals
+var narrativeBlacklist = map[string]bool{
+	"video": true, "clip": true, "phim": true, "kênh": true, "channel": true,
+	"đăng": true, "ký": true, "like": true, "share": true, "comment": true,
+	"bình": true, "luận": true, "theo": true, "dõi": true, "chào": true, "mừng": true,
+	"hẹn": true, "gặp": true, "tạm": true, "biệt": true, "giới": true, "thiệu": true,
+	"hôm": true, "nay": true, "ngày": true, "tháng": true, "năm": true, "phút": true,
+	"giây": true, "giờ": true, "lần": true, "phần": true, "bài": true, "viết": true,
+	"nội": true, "dung": true, "ví": true, "dụ": true, "lưu": true, "ý": true,
+	"nhớ": true, "đừng": true, "quên": true, "cảm": true, "ơn": true, "thanks": true,
+	"startup": true, "tiền": true, "bạc": true, "kinh": true, "doanh": true,
 }
 
 // englishStopWords contains common English stop words to ignore
@@ -305,7 +324,7 @@ func (tp *TextProcessor) ExtractKeywordsFromText(text, styleHint string) string 
 		if styleHint != "" {
 			return styleHint
 		}
-		return "abstract"
+		return "thiên nhiên" // Visual fallback instead of abstract
 	}
 
 	// Lowercase for processing
@@ -323,14 +342,16 @@ func (tp *TextProcessor) ExtractKeywordsFromText(text, styleHint string) string 
 
 	words := strings.Fields(cleaned.String())
 
-	// Filter stop words and very short tokens
+	// Filter stop words, blacklist and very short tokens
 	var meaningful []string
 	seen := make(map[string]bool)
 	for _, w := range words {
-		if len([]rune(w)) < 2 {
+		// For Vietnamese, 2-char words are often functional (là, có, đi...)
+		// 3-char+ words are more likely to be descriptive nouns/verbs
+		if len([]rune(w)) < 3 {
 			continue
 		}
-		if vietnameseStopWords[w] || englishStopWords[w] {
+		if vietnameseStopWords[w] || englishStopWords[w] || narrativeBlacklist[w] {
 			continue
 		}
 		if seen[w] {
@@ -338,8 +359,23 @@ func (tp *TextProcessor) ExtractKeywordsFromText(text, styleHint string) string 
 		}
 		seen[w] = true
 		meaningful = append(meaningful, w)
-		if len(meaningful) >= 5 {
+
+		// Limit to 3-4 specific keywords for better Pexels matching
+		if len(meaningful) >= 4 {
 			break
+		}
+	}
+
+	// If no meaningful words found, try to rescue by taking the best 2-char words
+	// or defaulting to style hint
+	if len(meaningful) == 0 {
+		for _, w := range words {
+			if len([]rune(w)) >= 2 && !vietnameseStopWords[w] && !narrativeBlacklist[w] {
+				meaningful = append(meaningful, w)
+				if len(meaningful) >= 3 {
+					break
+				}
+			}
 		}
 	}
 
@@ -347,7 +383,7 @@ func (tp *TextProcessor) ExtractKeywordsFromText(text, styleHint string) string 
 		if styleHint != "" {
 			return styleHint
 		}
-		return "abstract"
+		return "thiên nhiên"
 	}
 
 	result := strings.Join(meaningful, " ")
