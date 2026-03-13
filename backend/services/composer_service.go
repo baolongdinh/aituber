@@ -31,3 +31,8 @@ func (cs *ComposerService) ComposeVideoWithAudio(videoPath, audioPath, outputPat
 
 	return nil
 }
+
+// ConcatVideos concatenates multiple video files
+func (cs *ComposerService) ConcatVideos(videoPaths []string, outputPath string) error {
+	return utils.ConcatVideoFiles(videoPaths, outputPath)
+}

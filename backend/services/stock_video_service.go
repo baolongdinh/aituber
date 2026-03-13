@@ -1,9 +1,12 @@
 package services
 
 import (
+	"aituber/models"
 	"aituber/utils"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -132,205 +135,113 @@ func (sv *StockVideoService) PrepareStockVideo(keywords string, targetDuration f
 	return finalVideoPath, nil
 }
 
-// PrepareSegmentVideo fetches stock video for a SINGLE audio segment (by index).
-// orientation: "landscape" (YouTube, 1920x1080) or "portrait" (TikTok, 1080x1920)
+// PrepareSegmentVideo is kept for backward compatibility and simple usage.
 func (sv *StockVideoService) PrepareSegmentVideo(ctx context.Context, keywords string, visualDesc string, t2vModel, t2vProvider string, audioDuration float64, jobID string, segIndex int, orientation string) (string, error) {
+	material, err := sv.FetchSourceMaterial(ctx, keywords, visualDesc, t2vModel, t2vProvider, jobID, segIndex, orientation)
+	if err != nil {
+		return "", err
+	}
+	return sv.PrepareVideoFromMaterial(ctx, material, audioDuration, jobID, segIndex, orientation)
+}
+
+// FetchSourceMaterial only fetches the raw content (image bytes or pexels metadata) without needing audio duration.
+func (sv *StockVideoService) FetchSourceMaterial(ctx context.Context, keywords string, visualDesc string, t2vModel, t2vProvider string, jobID string, segIndex int, orientation string) (*models.StockMaterial, error) {
 	if orientation == "" {
 		orientation = "landscape"
 	}
 
-	if t2vModel == "" {
-		t2vModel = "genmo/mochi-1-preview" // Default
-	}
-	if t2vProvider == "" {
-		t2vProvider = "fal-ai" // Default
-	}
-
-	segDir := filepath.Join(sv.tempDir, jobID, "stock", fmt.Sprintf("seg_%03d", segIndex))
-	if err := os.MkdirAll(segDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create segment dir: %w", err)
-	}
-
-	// 0. CACHE CHECK: Check if we already generated a video for this visual description
-	cacheKey := sv.getCacheHash(visualDesc)
-	if sv.cacheDir != "" && visualDesc != "" {
-		if err := os.MkdirAll(sv.cacheDir, 0755); err == nil {
-			cachePath := filepath.Join(sv.cacheDir, cacheKey+".mp4")
-			if _, err := os.Stat(cachePath); err == nil {
-				fmt.Printf("[SegVideo %d] CACHE HIT! Reusing cached video for hash: %s\n", segIndex, cacheKey)
-				processedPath := filepath.Join(segDir, "cached_video.mp4")
-				if utils.CopyFile(cachePath, processedPath) == nil {
-					return processedPath, nil
-				}
-			}
+	// 0. Cache Lookup for AI Images
+	var cachePath string
+	if visualDesc != "" {
+		cacheHash := sv.getCacheHash(visualDesc + "|" + orientation)
+		cachePath = filepath.Join(sv.cacheDir, "stock", cacheHash+".png")
+		if imgBytes, err := os.ReadFile(cachePath); err == nil {
+			fmt.Printf("[FetchSource %d] AI Image CACHE HIT: %s\n", segIndex, cachePath)
+			return &models.StockMaterial{Type: "image", ImageBytes: imgBytes}, nil
 		}
 	}
 
-	// Helper to save to cache
-	saveToCache := func(srcPath string) {
-		if sv.cacheDir != "" && visualDesc != "" {
-			cachePath := filepath.Join(sv.cacheDir, cacheKey+".mp4")
-			_ = utils.CopyFile(srcPath, cachePath)
-		}
-	}
-
-	// TIER 0: Remote AI Hub (Highest Priority)
+	// 1. Remote AI Hub (Tier 0)
 	if sv.remoteHubURL != "" && visualDesc != "" {
-		fmt.Printf("[SegVideo %d] Remote Hub configured (%s) and visualDesc provided: %q\n", segIndex, sv.remoteHubURL, visualDesc)
-		remoteVideoPath := filepath.Join(segDir, "remote_hub_output.mp4")
-		fmt.Printf("[SegVideo %d] Attempting Remote Hub (Priority 0) with prompt: %q\n", segIndex, visualDesc)
+		fmt.Printf("[FetchSource %d] Attempting Remote Hub with prompt: %q\n", segIndex, visualDesc)
 		if imgBytes, err := sv.generateImageRemoteHub(ctx, visualDesc, orientation); err == nil {
-			fmt.Printf("[SegVideo %d] Remote Hub returned %d bytes of image data\n", segIndex, len(imgBytes))
-			imgPath := filepath.Join(segDir, "remote_hub.png")
-			if err := os.WriteFile(imgPath, imgBytes, 0644); err == nil {
-				fmt.Printf("[SegVideo %d] Successfully wrote image to: %s\n", segIndex, imgPath)
-				if err := utils.ImageToVideo(imgPath, remoteVideoPath, audioDuration+0.4, orientation); err == nil {
-					fmt.Printf("[SegVideo %d] Remote Hub generation SUCCEEDED!\n", segIndex)
-					saveToCache(remoteVideoPath)
-					return remoteVideoPath, nil
-				} else {
-					fmt.Printf("[SegVideo %d] Remote Hub ImageToVideo failed: %v\n", segIndex, err)
-				}
-			} else {
-				fmt.Printf("[SegVideo %d] Failed to write image file: %v\n", segIndex, err)
-			}
-		} else {
-			fmt.Printf("[SegVideo %d] Remote Hub failed: %v. Moving to Local Hub Tier...\n", segIndex, err)
-		}
-	} else {
-		if sv.remoteHubURL == "" {
-			fmt.Printf("[SegVideo %d] Remote Hub skipped: URL not configured\n", segIndex)
-		}
-		if visualDesc == "" {
-			fmt.Printf("[SegVideo %d] Remote Hub skipped: visualDesc is empty\n", segIndex)
+			// Save to cache
+			_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
+			_ = os.WriteFile(cachePath, imgBytes, 0644)
+			return &models.StockMaterial{Type: "image", ImageBytes: imgBytes}, nil
 		}
 	}
 
-	// 1. TIER 0: Local AI Hub (Highest Priority if available)
+	// 2. Local AI Hub (Tier 1)
 	if sv.localHubURL != "" && visualDesc != "" {
-		localVideoPath := filepath.Join(segDir, "local_hub_output.mp4")
-		fmt.Printf("[SegVideo %d] Attempting Local Hub (Priority 0) with prompt: %q\n", segIndex, visualDesc)
+		fmt.Printf("[FetchSource %d] Attempting Local Hub with prompt: %q\n", segIndex, visualDesc)
 		if imgBytes, err := sv.generateImageLocalHub(ctx, visualDesc, orientation); err == nil {
-			imgPath := filepath.Join(segDir, "local_hub.png")
-			if os.WriteFile(imgPath, imgBytes, 0644) == nil {
-				if err := utils.ImageToVideo(imgPath, localVideoPath, audioDuration+0.4, orientation); err == nil {
-					fmt.Printf("[SegVideo %d] Local Hub generation SUCCEEDED!\n", segIndex)
-					saveToCache(localVideoPath)
-					return localVideoPath, nil
-				}
-			}
-		} else {
-			fmt.Printf("[SegVideo %d] Local Hub failed/unavailable: %v. Moving to T2V Tier...\n", segIndex, err)
+			// Save to cache
+			_ = os.MkdirAll(filepath.Dir(cachePath), 0755)
+			_ = os.WriteFile(cachePath, imgBytes, 0644)
+			return &models.StockMaterial{Type: "image", ImageBytes: imgBytes}, nil
 		}
 	}
 
-	// 1. TIER 1: Text-to-Video (T2V) Generation
-	if sv.hfService != nil && sv.hfService.HasToken() && visualDesc != "" {
-		t2vVideoPath := filepath.Join(segDir, "t2v_output.mp4")
-		fmt.Printf("[SegVideo %d] Attempting T2V (Priority 1) with prompt: %q\n", segIndex, visualDesc)
-
-		if videoBytes, t2vErr := sv.hfService.GenerateVideoForPrompt(visualDesc, t2vModel, t2vProvider); t2vErr == nil {
-			if os.WriteFile(t2vVideoPath, videoBytes, 0644) == nil {
-				// Normalize and trim the generated video
-				processedT2VPath := filepath.Join(segDir, "t2v_processed.mp4")
-
-				var vfFilter string
-				if orientation == "portrait" {
-					vfFilter = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920:(iw-ow)/2:(ih-oh)/2,setsar=1,fps=30,eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p"
-				} else {
-					vfFilter = "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080:(iw-ow)/2:(ih-oh)/2,setsar=1,fps=30,eq=contrast=1.05:saturation=1.15:brightness=-0.02,format=yuv420p"
-				}
-
-				if trimErr := utils.RunFFmpegCommand([]string{
-					"-i", t2vVideoPath,
-					"-t", fmt.Sprintf("%.3f", audioDuration+0.4),
-					"-vf", vfFilter,
-					"-c:v", "libx264",
-					"-preset", "medium",
-					"-crf", "20",
-					"-an",
-					"-y", processedT2VPath,
-				}); trimErr == nil {
-					fmt.Printf("[SegVideo %d] HF T2V generation SUCCEEDED!\n", segIndex)
-					saveToCache(processedT2VPath)
-					return processedT2VPath, nil
-				}
-			}
-		} else {
-			fmt.Printf("[SegVideo %d] HF T2V failed: %v. Moving to T2I Tier...\n", segIndex, t2vErr)
-		}
-	}
-
-	// 2. TIER 2: Text-to-Image (T2I) Generation + Image-to-Video
-	// Fall back to AI image generation if T2V failed or was skipped
-	imgPath := filepath.Join(segDir, "fallback.png")
-	fallbackVideoPath := filepath.Join(segDir, "fallback_animated.mp4")
-
-	// Make the AI prompt unique per usage
-	uniqueKeywords := keywords
-	if keywords == "" {
-		uniqueKeywords = visualDesc
-	}
-
-	fmt.Printf("[SegVideo %d] Attempting T2I (Priority 2) fallback...\n", segIndex)
-
-	// Sub-Tier A: HuggingFace FLUX.1-schnell (cheaper, faster)
-	if sv.hfService != nil && sv.hfService.HasToken() {
-		if imgBytes, imgErr := sv.hfService.GenerateImageForKeyword(uniqueKeywords, visualDesc, orientation); imgErr == nil {
-			if os.WriteFile(imgPath, imgBytes, 0644) == nil {
-				if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
-					fmt.Printf("[SegVideo %d] HuggingFace T2I SUCCEEDED!\n", segIndex)
-					saveToCache(fallbackVideoPath)
-					return fallbackVideoPath, nil
-				}
-			}
-		}
-	}
-
-	// Sub-Tier B: Gemini Image (backup)
-	if sv.geminiService != nil && sv.geminiService.HasKeys() {
-		if imgBytes, imgErr := sv.geminiService.GenerateImageForKeyword(uniqueKeywords, visualDesc, orientation); imgErr == nil {
-			if os.WriteFile(imgPath, imgBytes, 0644) == nil {
-				if err := utils.ImageToVideo(imgPath, fallbackVideoPath, audioDuration+0.4, orientation); err == nil {
-					fmt.Printf("[SegVideo %d] Gemini T2I SUCCEEDED!\n", segIndex)
-					saveToCache(fallbackVideoPath)
-					return fallbackVideoPath, nil
-				}
-			}
-		}
-	}
-
-	// 3. TIER 3: Pexels Stock Video Search (Last Resort)
-	fmt.Printf("[SegVideo %d] Pexels search (Priority 3 - Last Resort) for: %q\n", segIndex, keywords)
-
-	// Setup per-job tracking map
+	// 2. Pexels (Tier 2 - Fallback)
 	trackIface, _ := sv.jobMediaTrack.LoadOrStore(jobID, &sync.Map{})
 	usedMedia := trackIface.(*sync.Map)
-
-	// Search Pexels – fetch up to 15 candidates per query
-	videoInfos, _ := sv.searchVideoInfos(ctx, keywords, 15, orientation, usedMedia)
-
-	// Step 2: Greedily download videos until we have enough duration
-	downloadedPaths, err := sv.downloadUntilDuration(videoInfos, audioDuration, segDir, segIndex, usedMedia)
-	if err == nil && len(downloadedPaths) > 0 {
-		return sv.processAndTrimStockVideo(downloadedPaths, audioDuration, orientation, segDir, segIndex, keywords)
-	}
-
-	// 4. TIER 4: ULTRA FALLBACK - "natural 4k" search
-	fmt.Printf("[SegVideo %d] Tier 1, 2, 3 FAILED. Attempting Tier 4 (Ultra Fallback: natural 4k)...\n", segIndex)
-	fallbackInfos, _ := sv.searchVideoInfos(ctx, "natural 4k", 15, orientation, usedMedia)
-	if len(fallbackInfos) > 0 {
-		dlPaths, dlErr := sv.downloadUntilDuration(fallbackInfos, audioDuration, segDir, segIndex, usedMedia)
-		if dlErr == nil && len(dlPaths) > 0 {
-			finalPath, pErr := sv.processAndTrimStockVideo(dlPaths, audioDuration, orientation, segDir, segIndex, "natural 4k")
-			if pErr == nil {
-				return finalPath, nil
-			}
+	infos, err := sv.searchVideoInfos(ctx, keywords, 10, orientation, usedMedia)
+	if err == nil && len(infos) > 0 {
+		mInfos := make([]models.VideoInfo, len(infos))
+		for i, v := range infos {
+			mInfos[i] = models.VideoInfo{Link: v.Link, Duration: v.Duration}
 		}
+		return &models.StockMaterial{Type: "pexels", PexelsInfo: mInfos}, nil
 	}
 
-	// 5. TIER 5: FINAL PLACEHOLDER (Guarantee A/V Sync)
-	fmt.Printf("[SegVideo %d] ALL SEARCH TIERS FAILED. Generating final placeholder...\n", segIndex)
+	return nil, fmt.Errorf("all source material fetching tiers failed for segment %d", segIndex)
+}
+
+// PrepareVideoFromMaterial takes the pre-fetched material and renders/processes it using the known audio duration.
+func (sv *StockVideoService) PrepareVideoFromMaterial(ctx context.Context, material *models.StockMaterial, audioDuration float64, jobID string, segIndex int, orientation string) (string, error) {
+	segDir := filepath.Join(sv.tempDir, jobID, "stock", fmt.Sprintf("seg_%03d", segIndex))
+	_ = os.MkdirAll(segDir, 0755)
+
+	targetDuration := audioDuration + 0.4
+
+	switch material.Type {
+	case "image":
+		imgPath := filepath.Join(segDir, "source_image.png")
+		if err := os.WriteFile(imgPath, material.ImageBytes, 0644); err != nil {
+			return "", fmt.Errorf("failed to save source image: %w", err)
+		}
+		outputPath := filepath.Join(segDir, "generated_video.mp4")
+		if err := utils.ImageToVideo(imgPath, outputPath, targetDuration, orientation); err != nil {
+			return "", fmt.Errorf("ImageToVideo failed: %w", err)
+		}
+		return outputPath, nil
+
+	case "pexels":
+		// Download clips until duration is met
+		trackIface, _ := sv.jobMediaTrack.LoadOrStore(jobID, &sync.Map{})
+		usedMedia := trackIface.(*sync.Map)
+
+		// Convert models.VideoInfo back to internal videoInfo for existing helpers
+		vInfos := make([]videoInfo, len(material.PexelsInfo))
+		for i, v := range material.PexelsInfo {
+			vInfos[i] = videoInfo{Link: v.Link, Duration: v.Duration}
+		}
+
+		paths, err := sv.downloadUntilDuration(vInfos, audioDuration, segDir, segIndex, usedMedia)
+		if err != nil {
+			return "", err
+		}
+		return sv.processAndTrimStockVideo(paths, audioDuration, orientation, segDir, segIndex, "pexels")
+
+	default:
+		// Attempt final placeholder if something went wrong
+		return sv.generatePlaceholder(segDir, audioDuration, orientation, segIndex)
+	}
+}
+
+func (sv *StockVideoService) generatePlaceholder(segDir string, audioDuration float64, orientation string, segIndex int) (string, error) {
+	fmt.Printf("[SegVideo %d] Generating final placeholder...\n", segIndex)
 	placeholderPath := filepath.Join(segDir, "placeholder.mp4")
 	placeholderDur := audioDuration + 0.4
 
@@ -349,10 +260,16 @@ func (sv *StockVideoService) PrepareSegmentVideo(ctx context.Context, keywords s
 	placeholderArgs = append(placeholderArgs, "-c:v", "libx264", "-preset", "ultrafast", "-an", "-y", placeholderPath)
 
 	if err := utils.RunFFmpegCommand(placeholderArgs); err != nil {
-		return "", fmt.Errorf("all tiers failed AND placeholder generation failed: %w", err)
+		return "", fmt.Errorf("placeholder generation failed: %w", err)
 	}
 
 	return placeholderPath, nil
+}
+
+func (sv *StockVideoService) getCacheHash(prompt string) string {
+	h := sha256.New()
+	h.Write([]byte(prompt))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // downloadUntilDuration is a helper to download videos from infos until a target duration is met
@@ -503,13 +420,6 @@ func (sv *StockVideoService) generateImageLocalHub(ctx context.Context, prompt s
 			}
 		}
 	}
-}
-
-func (sv *StockVideoService) getCacheHash(text string) string {
-	if text == "" {
-		return "empty"
-	}
-	return utils.GetMD5Hash(text)
 }
 
 // videoInfo holds just the URL + duration of a Pexels video file match

@@ -10,9 +10,25 @@ import (
 	"strings"
 )
 
+var (
+	// FFmpegPath is the path to the ffmpeg executable
+	FFmpegPath = "ffmpeg"
+	// FFprobePath is the path to the ffprobe executable
+	FFprobePath = "ffprobe"
+
+	// RunFFmpegFunc allows overriding the ffmpeg execution logic (for testing)
+	RunFFmpegFunc = runFFmpegCommandDefault
+	// GetDurationFunc allows overriding the duration retrieval logic (for testing)
+	GetDurationFunc = getDurationDefault
+)
+
 // RunFFmpegCommand executes an FFmpeg command
 func RunFFmpegCommand(args []string) error {
-	cmd := exec.Command("ffmpeg", args...)
+	return RunFFmpegFunc(args)
+}
+
+func runFFmpegCommandDefault(args []string) error {
+	cmd := exec.Command(FFmpegPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -24,13 +40,54 @@ func RunFFmpegCommand(args []string) error {
 	return nil
 }
 
+// ConcatVideoFiles concatenates multiple video files into one
+func ConcatVideoFiles(videoPaths []string, outputPath string) error {
+	if len(videoPaths) == 0 {
+		return fmt.Errorf("no video paths provided for concatenation")
+	}
+	if len(videoPaths) == 1 {
+		return CopyFile(videoPaths[0], outputPath)
+	}
+
+	// Create list file for FFmpeg concat demuxer
+	tempDir := filepath.Dir(outputPath)
+	listPath := filepath.Join(tempDir, "concat_list.txt")
+	f, err := os.Create(listPath)
+	if err != nil {
+		return err
+	}
+	for _, p := range videoPaths {
+		absPath, _ := filepath.Abs(p)
+		f.WriteString(fmt.Sprintf("file '%s'\n", filepath.ToSlash(absPath)))
+	}
+	f.Close()
+	defer os.Remove(listPath)
+
+	return RunFFmpegCommand([]string{
+		"-f", "concat",
+		"-safe", "0",
+		"-i", listPath,
+		"-c", "copy",
+		"-y", outputPath,
+	})
+}
+
 // GetVideoDuration returns the duration of a video file in seconds
 func GetVideoDuration(videoPath string) (float64, error) {
-	cmd := exec.Command("ffprobe",
+	return GetDurationFunc(videoPath)
+}
+
+// GetAudioDuration returns the duration of an audio file in seconds
+func GetAudioDuration(audioPath string) (float64, error) {
+	return GetDurationFunc(audioPath)
+}
+
+func getDurationDefault(path string) (float64, error) {
+	cmd := exec.Command(FFprobePath,
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1",
-		videoPath,
+		path,
 	)
 
 	output, err := cmd.Output()
@@ -45,11 +102,6 @@ func GetVideoDuration(videoPath string) (float64, error) {
 	}
 
 	return duration, nil
-}
-
-// GetAudioDuration returns the duration of an audio file in seconds
-func GetAudioDuration(audioPath string) (float64, error) {
-	return GetVideoDuration(audioPath) // Same implementation
 }
 
 // MergeAudioWithCrossfade merges audio files with crossfade effect

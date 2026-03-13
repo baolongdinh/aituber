@@ -17,17 +17,21 @@ type IScriptGenerator interface {
 // IAudioService defines the interface for audio generation and processing
 type IAudioService interface {
 	GenerateAudioChunks(chunks []string, voice string, speed float64, jobID string, maxConcurrent int) ([]string, error)
+	GenerateSingleAudio(text, voice string, speed float64, jobID string, index int) (string, error)
 	MergeAudioFiles(audioPaths []string, outputPath string) error
 }
 
 // IStockVideoService defines the interface for fetching stock clips
 type IStockVideoService interface {
 	PrepareSegmentVideo(ctx context.Context, keywords string, visualDesc string, t2vModel, t2vProvider string, audioDuration float64, jobID string, segIndex int, orientation string) (string, error)
+	FetchSourceMaterial(ctx context.Context, keywords string, visualDesc string, t2vModel, t2vProvider string, jobID string, segIndex int, orientation string) (*models.StockMaterial, error)
+	PrepareVideoFromMaterial(ctx context.Context, material *models.StockMaterial, audioDuration float64, jobID string, segIndex int, orientation string) (string, error)
 }
 
 // IComposerService defines the interface for combining audio and video
 type IComposerService interface {
 	ComposeVideoWithAudio(videoPath, audioPath, outputPath string) error
+	ConcatVideos(videoPaths []string, outputPath string) error
 }
 
 // IJobManager defines the interface for tracking job progress

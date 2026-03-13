@@ -9,9 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
-	"time"
 )
 
 // VideoWorkflowService orchestrates the entire video creation pipeline
@@ -71,80 +69,120 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req models.Generate
 		return
 	}
 
-	// 2. Audio Generation
-	audioPaths, audioTexts, err := s.generateAudio(jobID, req, segments)
-	if err != nil {
-		s.jobManager.MarkFailed(jobID, err)
-		return
+	// 2. Parallel Segment Processing (Audio + Fetch Source Material)
+	s.jobManager.UpdateProgress(jobID, "Processing segments in parallel", 10)
+	numSegments := len(segments)
+	audioPaths := make([]string, numSegments)
+	audioTexts := make([]string, numSegments)
+	segmentVideoPaths := make([]string, numSegments)
+	segmentErrors := make([]error, numSegments)
+
+	sem := make(chan struct{}, s.cfg.MaxConcurrentTTSRequests)
+	var wg sync.WaitGroup
+
+	for i, seg := range segments {
+		wg.Add(1)
+		go func(index int, sSeg models.VideoSegment) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Sub-task: Concurrent Audio Gen and Source Material Fetch
+			var aPath string
+			var aErr error
+			var material *models.StockMaterial
+			var mErr error
+			var wgSub sync.WaitGroup
+
+			wgSub.Add(2)
+			go func() {
+				defer wgSub.Done()
+				aPath, aErr = s.audioService.GenerateSingleAudio(sSeg.Text, req.Voice, -0.5, jobID, index)
+			}()
+			go func() {
+				defer wgSub.Done()
+				material, mErr = s.stockVideoService.FetchSourceMaterial(context.Background(), sSeg.VisualPrompt, sSeg.VisualDescription, req.T2VModel, req.T2VProvider, jobID, index, orientation)
+			}()
+			wgSub.Wait()
+
+			if aErr != nil {
+				segmentErrors[index] = fmt.Errorf("audio failed: %w", aErr)
+				return
+			}
+			if mErr != nil {
+				segmentErrors[index] = fmt.Errorf("fetch material failed: %w", mErr)
+				return
+			}
+
+			audioPaths[index] = aPath
+			audioTexts[index] = sSeg.Text
+
+			// Now that we have audio, get duration and prepare video
+			duration, _ := utils.GetAudioDuration(aPath)
+			if duration <= 0 {
+				duration = 5.0 // fallback
+			}
+
+			vPath, vErr := s.stockVideoService.PrepareVideoFromMaterial(context.Background(), material, duration, jobID, index, orientation)
+			if vErr != nil {
+				segmentErrors[index] = fmt.Errorf("prepare video failed: %w", vErr)
+				return
+			}
+			segmentVideoPaths[index] = vPath
+		}(i, seg)
+	}
+
+	wg.Wait()
+
+	// Check if any critical errors occurred
+	for i, err := range segmentErrors {
+		if err != nil {
+			s.jobManager.MarkFailed(jobID, fmt.Errorf("segment %d failed: %w", i, err))
+			return
+		}
 	}
 
 	// 3. Subtitles Generation (Non-fatal)
-	s.jobManager.UpdateProgress(jobID, "Generating subtitles", 32)
-	if _, err := s.GenerateSRT(jobID, audioPaths, audioTexts, filepath.Join(tempDir, "output"), req.Platform); err != nil {
+	s.jobManager.UpdateProgress(jobID, "Generating subtitles", 70)
+	srtPath, err := s.GenerateSRT(jobID, audioPaths, audioTexts, filepath.Join(tempDir, "output"), req.Platform)
+	if err != nil {
 		log.Printf("[Job %s] Failed to generate subtitles: %v", jobID, err)
 	}
 
-	// 4. Merge Audio
-	mergedAudioPath, err := s.mergeAudio(jobID, tempDir, audioPaths)
-	if err != nil {
-		s.jobManager.MarkFailed(jobID, err)
+	// 4. Merge Audio and Concatenate Videos
+	s.jobManager.UpdateProgress(jobID, "Merging assets", 80)
+	mergedAudioPath := filepath.Join(tempDir, "output", "merged_audio.mp3")
+	if err := s.audioService.MergeAudioFiles(audioPaths, mergedAudioPath); err != nil {
+		s.jobManager.MarkFailed(jobID, fmt.Errorf("audio merge failed: %w", err))
 		return
 	}
 
-	// 5. Stock Video Gathering
-	mergedVideoPath, err := s.gatherAndConcatStockVideos(jobID, tempDir, segments, audioPaths, req, orientation)
-	if err != nil {
-		s.jobManager.MarkFailed(jobID, err)
+	mergedVideoPath := filepath.Join(tempDir, "output", "merged_video.mp4")
+	if err := s.composerService.ConcatVideos(segmentVideoPaths, mergedVideoPath); err != nil {
+		s.jobManager.MarkFailed(jobID, fmt.Errorf("video concat failed: %w", err))
 		return
 	}
 
-	// 6. Composition
+	// 5. Composition
 	finalVideoPath, err := s.composeVideoWithAudio(jobID, tempDir, mergedVideoPath, mergedAudioPath)
 	if err != nil {
 		s.jobManager.MarkFailed(jobID, err)
 		return
 	}
 
-	// 7. Add Intro/Outro for YouTube
-	finalVideoPath, err = s.addIntroOutro(jobID, tempDir, finalVideoPath, req.Platform)
-	if err != nil {
-		s.jobManager.MarkFailed(jobID, err)
-		return
-	}
-
-	// 8. Save
-	s.jobManager.UpdateProgress(jobID, "Saving video to output folder", 98)
-	savedPath, err := s.saveToOutputFolder(finalVideoPath, req.Platform, req.ContentName)
-	if err != nil {
-		log.Printf("[Job %s] Warning: could not save to output folder: %v", jobID, err)
-		savedPath = ""
-	} else {
-		log.Printf("[Job %s] Video saved to: %s", jobID, savedPath)
-	}
-
-	s.jobManager.UpdateProgress(jobID, "Complete", 100)
-
-	// 9. Burn subtitles if enabled
+	// 6. Burn subtitles if enabled
 	finalOutputPath := finalVideoPath
-	if s.cfg.EnableSubtitles {
-		s.jobManager.UpdateProgress(jobID, "Burning subtitles into video", 99)
-		srtPath := filepath.Join(tempDir, "output", "subtitles.srt")
+	if s.cfg.EnableSubtitles && srtPath != "" {
+		s.jobManager.UpdateProgress(jobID, "Burning subtitles", 90)
 		subtitleVideoPath := filepath.Join(tempDir, "output", "final_video_with_subs.mp4")
-
-		// Create SRT first if not exists (it should be created in generateAudio or GenerateSRT)
-		// Assuming GenerateSRT was called or can be called here
-		if _, err := os.Stat(srtPath); os.IsNotExist(err) {
-			// Try to find if it was generated elsewhere or generate it now
-			// For simplicity, we assume it's there or we provide a fallback
-		}
-
-		if err := utils.BurnSubtitles(finalVideoPath, srtPath, subtitleVideoPath, orientation); err != nil {
-			log.Printf("[Job %s] Subtitle burn-in failed: %v", jobID, err)
-		} else {
+		if err := utils.BurnSubtitles(finalVideoPath, srtPath, subtitleVideoPath, orientation); err == nil {
 			finalOutputPath = subtitleVideoPath
-			log.Printf("[Job %s] Subtitles burned into video successfully", jobID)
 		}
 	}
+
+	// 7. Save
+	s.jobManager.UpdateProgress(jobID, "Saving final output", 95)
+	savedPath, _ := s.saveToOutputFolder(finalOutputPath, req.Platform, req.ContentName)
 
 	s.jobManager.MarkCompleted(jobID, finalOutputPath, savedPath)
 	log.Printf("[Job %s] Video generation completed successfully", jobID)
@@ -190,133 +228,6 @@ func (s *VideoWorkflowService) generateScript(jobID string, req models.GenerateR
 	return segments, nil
 }
 
-// Sub-pipeline: Audio
-func (s *VideoWorkflowService) generateAudio(jobID string, req models.GenerateRequest, segments []models.VideoSegment) ([]string, []string, error) {
-	s.jobManager.UpdateProgress(jobID, "Preparing text for audio generation", 12)
-	var audioTexts []string
-	for _, seg := range segments {
-		if strings.TrimSpace(seg.Text) != "" {
-			audioTexts = append(audioTexts, seg.Text)
-		}
-	}
-
-	if len(audioTexts) == 0 {
-		return nil, nil, fmt.Errorf("no valid script segments extracted to process")
-	}
-
-	s.jobManager.UpdateProgress(jobID, fmt.Sprintf("Generating %d audio chunks", len(audioTexts)), 20)
-	audioPaths, err := s.audioService.GenerateAudioChunks(
-		audioTexts,
-		req.Voice,
-		req.SpeakingSpeed,
-		jobID,
-		s.cfg.MaxConcurrentTTSRequests,
-	)
-	if err != nil {
-		return nil, nil, fmt.Errorf("audio generation failed: %w", err)
-	}
-	return audioPaths, audioTexts, nil
-}
-
-// Sub-pipeline: Merge Audio
-func (s *VideoWorkflowService) mergeAudio(jobID, tempDir string, audioPaths []string) (string, error) {
-	s.jobManager.UpdateProgress(jobID, "Merging audio", 42)
-	mergedAudioPath := filepath.Join(tempDir, "output", "merged_audio.mp3")
-	if err := s.audioService.MergeAudioFiles(audioPaths, mergedAudioPath); err != nil {
-		return "", fmt.Errorf("audio merge failed: %w", err)
-	}
-	return mergedAudioPath, nil
-}
-
-// Sub-pipeline: Stock Video
-func (s *VideoWorkflowService) gatherAndConcatStockVideos(
-	jobID, tempDir string, segments []models.VideoSegment, audioPaths []string,
-	req models.GenerateRequest, orientation string,
-) (string, error) {
-	s.jobManager.UpdateProgress(jobID, "Preparing per-segment stock videos", 50)
-
-	realDurations := make([]float64, len(audioPaths))
-	for i, ap := range audioPaths {
-		d, err := utils.GetAudioDuration(ap)
-		if err != nil {
-			log.Printf("[Job %s] Could not get duration of chunk %d: %v (using estimate 5s)", jobID, i, err)
-			d = 5.0
-		}
-		realDurations[i] = d
-	}
-
-	segKeywords := make([]string, len(segments))
-	for i, seg := range segments {
-		segKeywords[i] = seg.VisualPrompt
-		if strings.TrimSpace(segKeywords[i]) == "" {
-			segKeywords[i] = s.textProcessor.ExtractKeywordsFromText(seg.Text, req.StockKeywords)
-		}
-	}
-
-	segVideoPaths := make([]string, len(segments))
-	segErrors := make([]error, len(segments))
-	sem := make(chan struct{}, 3)
-	var wg sync.WaitGroup
-
-	for i := range segments {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			s.jobManager.UpdateProgress(jobID, fmt.Sprintf("Fetching stock video for segment %d/%d", idx+1, len(segments)), 50+idx*30/len(segments))
-
-			// Create a per-segment context with timeout (matching the 6-hour poll request)
-			segCtx, cancel := context.WithTimeout(context.Background(), 6*time.Hour)
-			defer cancel()
-
-			vp, err := s.stockVideoService.PrepareSegmentVideo(
-				segCtx,
-				segKeywords[idx],
-				segments[idx].VisualDescription,
-				req.T2VModel,
-				req.T2VProvider,
-				realDurations[idx],
-				jobID,
-				idx,
-				orientation,
-			)
-			if err != nil {
-				segErrors[idx] = err
-				log.Printf("[Job %s] Segment %d video error: %v", jobID, idx, err)
-			} else {
-				segVideoPaths[idx] = vp
-			}
-		}(i)
-	}
-	wg.Wait()
-
-	var goodSegPaths []string
-	for i, err := range segErrors {
-		if err != nil {
-			log.Printf("[Job %s] Segment %d failed, skipping from timeline: %v", jobID, i, err)
-			continue
-		}
-		if segVideoPaths[i] != "" {
-			goodSegPaths = append(goodSegPaths, segVideoPaths[i])
-		}
-	}
-
-	if len(goodSegPaths) == 0 {
-		return "", fmt.Errorf("all segment video fetches failed")
-	}
-
-	s.jobManager.UpdateProgress(jobID, "Concatenating segment videos", 82)
-	concatVideoPath := filepath.Join(tempDir, "output", "segments_concat.mp4")
-	if err := utils.ConcatVideosNoAudio(goodSegPaths, concatVideoPath); err != nil {
-		return "", fmt.Errorf("segment video concat failed: %w", err)
-	}
-
-	return concatVideoPath, nil
-}
-
-// Sub-pipeline: Compositing
 func (s *VideoWorkflowService) composeVideoWithAudio(jobID, tempDir, mergedVideoPath, mergedAudioPath string) (string, error) {
 	s.jobManager.UpdateProgress(jobID, "Composing final video with audio", 90)
 	composedPath := filepath.Join(tempDir, "output", "final_video_composed.mp4")
@@ -324,26 +235,6 @@ func (s *VideoWorkflowService) composeVideoWithAudio(jobID, tempDir, mergedVideo
 		return "", fmt.Errorf("composition failed: %w", err)
 	}
 	return composedPath, nil
-}
-
-// Sub-pipeline: Intro Outro
-func (s *VideoWorkflowService) addIntroOutro(jobID, tempDir, finalVideoPath, platform string) (string, error) {
-	s.jobManager.UpdateProgress(jobID, "Adding intro/outro", 95)
-
-	introPath := "static/intro_video.mp4"
-	outroPath := "static/outro_video.mp4"
-
-	concatList := utils.BuildFinalConcatList(platform, introPath, outroPath, finalVideoPath)
-
-	if len(concatList) > 1 {
-		finalWithIntroOutro := filepath.Join(tempDir, "output", "final_complete.mp4")
-		if err := utils.ConcatVideos(concatList, finalWithIntroOutro); err != nil {
-			return "", fmt.Errorf("failed to add intro/outro: %w", err)
-		}
-		return finalWithIntroOutro, nil
-	}
-
-	return finalVideoPath, nil
 }
 
 func (s *VideoWorkflowService) saveToOutputFolder(srcPath, platform, contentName string) (string, error) {

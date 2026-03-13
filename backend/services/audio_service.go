@@ -140,12 +140,16 @@ func (as *AudioService) GenerateAudioChunks(chunks []string, voice string, speed
 	}
 
 	wg.Wait()
-	for i, err := range errors {
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate audio chunk %d: %w", i, err)
-		}
-	}
 	return audioPaths, nil
+}
+
+// GenerateSingleAudio generates a single audio chunk
+func (as *AudioService) GenerateSingleAudio(text, voice string, speed float64, jobID string, index int) (string, error) {
+	audioPath, err := as.generateSingleAudioFPT(text, voice, speed, jobID, index)
+	if err != nil {
+		return "", err
+	}
+	return as.postProcessAudio(audioPath, jobID, index)
 }
 
 // GenerateAudioFullScript generates TTS for the entire script at once (ElevenLabs flow)

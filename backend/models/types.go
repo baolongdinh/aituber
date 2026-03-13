@@ -67,6 +67,19 @@ type JobStatus struct {
 	UpdatedAt   time.Time
 }
 
+// StockMaterial represents intermediate fetched material (image or video metadata)
+type StockMaterial struct {
+	Type       string      // "image", "video", "pexels"
+	ImageBytes []byte      // Raw bytes for AI images
+	VideoPath  string      // Path to downloaded T2V video
+	PexelsInfo []VideoInfo // List of pexels clip info
+}
+
+type VideoInfo struct {
+	Link     string
+	Duration int
+}
+
 // ---------- Series Video Generation ----------
 
 // SeriesGenerateRequest – POST /api/generate-series

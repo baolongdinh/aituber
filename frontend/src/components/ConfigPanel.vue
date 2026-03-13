@@ -25,17 +25,7 @@
     </div>
 
 
-    <!-- Summary -->
-    <div class="config-summary">
-      <div class="summary-item">
-        <span class="item-label">Nền tảng</span>
-        <span class="item-val">Gemini 1.5 Pro</span>
-      </div>
-      <div class="summary-item">
-        <span class="item-label">Xử lý</span>
-        <span class="item-val">Parallel TTS</span>
-      </div>
-    </div>
+  
   </div>
 </template>
 
