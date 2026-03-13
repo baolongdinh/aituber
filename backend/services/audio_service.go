@@ -27,11 +27,14 @@ type AudioService struct {
 	sampleRate        int
 	crossfadeDuration float64
 	rateLimiter       <-chan time.Time
+	ttsCachePath      string // Path to TTS URL cache JSON file
 }
 
 // NewAudioService creates a new audio service
 func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir string, audioBitrate string, sampleRate int, crossfadeDuration float64) *AudioService {
 	limiter := time.Tick(5000 * time.Millisecond)
+
+	cachePath := filepath.Join(tempDir, "tts_url_cache.json")
 
 	return &AudioService{
 		apiPool:          apiPool,
@@ -44,6 +47,45 @@ func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir st
 		sampleRate:        sampleRate,
 		crossfadeDuration: crossfadeDuration,
 		rateLimiter:       limiter,
+		ttsCachePath:      cachePath,
+	}
+}
+
+// ttsCacheKey builds the cache lookup key
+func ttsCacheKey(text, voice string, speed float64) string {
+	return fmt.Sprintf("%s|%s|%.1f", text, voice, speed)
+}
+
+// ttsCacheMu protects concurrent writes to the JSON cache file
+var ttsCacheMu sync.Mutex
+
+// ttsReadCache reads the JSON cache and returns the URL for the given key, or empty string
+func (as *AudioService) ttsReadCache(key string) string {
+	ttsCache, err := os.ReadFile(as.ttsCachePath)
+	if err != nil {
+		return ""
+	}
+	var cache map[string]string
+	if json.Unmarshal(ttsCache, &cache) != nil {
+		return ""
+	}
+	return cache[key]
+}
+
+// ttsWriteCache persists a key→url pair to the JSON cache file
+func (as *AudioService) ttsWriteCache(key, url string) {
+	ttsCacheMu.Lock()
+	defer ttsCacheMu.Unlock()
+
+	cache := make(map[string]string)
+	if existing, err := os.ReadFile(as.ttsCachePath); err == nil {
+		_ = json.Unmarshal(existing, &cache)
+	}
+	cache[key] = url
+
+	if data, err := json.MarshalIndent(cache, "", "  "); err == nil {
+		_ = os.MkdirAll(filepath.Dir(as.ttsCachePath), 0755)
+		_ = os.WriteFile(as.ttsCachePath, data, 0644)
 	}
 }
 
@@ -206,15 +248,31 @@ func (as *AudioService) mapToElevenLabsVoice(voiceID string) string {
 }
 
 // generateSingleAudioFPT calls FPT.AI TTS and polls for the result.
-// The TTS *API call* and the *poll* now have independent retry budgets:
-//   - API call: max 3 attempts (only if the API itself returns an error).
-//   - Poll: up to 30 attempts with exponential backoff (total ~5 min).
-//     If poll times out, we retry the API call to get a fresh URL.
+// Cache strategy: before calling FPT, check local JSON cache. If a URL exists,
+// try to download it. If download succeeds, reuse it. Otherwise call FPT as normal
+// and save the new URL to cache. No RAM caching — always reads/writes JSON file.
 func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64, jobID string, index int) (string, error) {
 	audioPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_%03d.mp3", index))
-	maxAPIRetries := 36 // Tăng số lượng retries để có thể roll qua nhiều key hơn nếu FPT bị treo
+	cacheKey := ttsCacheKey(text, voice, speed)
+
+	// --- CACHE LOOKUP ---
+	if cachedURL := as.ttsReadCache(cacheKey); cachedURL != "" {
+		log.Printf("[Chunk %d] TTS cache HIT for key (%.30s...). Trying URL: %s", index, cacheKey, cachedURL)
+		if data, err := as.downloadAudio(cachedURL); err == nil {
+			if saveErr := as.saveAudioFile(data, audioPath); saveErr == nil {
+				log.Printf("[Chunk %d] TTS cache served successfully.", index)
+				// No need to return postProcessAudio here – caller does it
+				return audioPath, nil
+			}
+		} else {
+			log.Printf("[Chunk %d] Cached URL no longer valid (%v). Falling back to FPT call.", index, err)
+		}
+	}
+
+	// --- NORMAL FPT FLOW ---
+	maxAPIRetries := 36
 	var lastErr error
-	var asyncURLs []string // Mảng lưu các URL đã sinh ra trong các lần retry
+	var asyncURLs []string
 
 	for attempt := 0; attempt < maxAPIRetries; attempt++ {
 		if attempt > 0 {
@@ -236,16 +294,17 @@ func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64
 		}
 		as.apiPool.MarkSuccess(apiKey)
 
-		// Thêm url mới vào list
+		// Save URL to cache immediately so future runs can try it
+		as.ttsWriteCache(cacheKey, asyncURL)
+		log.Printf("[Chunk %d] TTS URL cached: %s", index, asyncURL)
+
 		asyncURLs = append(asyncURLs, asyncURL)
 
-		// Poll TẤT CẢ các URL trong list độc lập
 		audioData, downloadErr := as.pollForAudioDownloadList(asyncURLs, index)
 		if downloadErr != nil {
-			// Poll exhausted.
 			log.Printf("[Chunk %d] Poll exhausted for %d URLs, will re-request TTS: %v", index, len(asyncURLs), downloadErr)
 			lastErr = downloadErr
-			continue // try getting a fresh URL
+			continue
 		}
 
 		if err := as.saveAudioFile(audioData, audioPath); err != nil {
@@ -253,7 +312,6 @@ func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64
 		}
 		return as.postProcessAudio(audioPath, jobID, index)
 	}
-	// Nếu thử hết 5 lần vẫn lỗi, trả về lỗi cuối cùng
 	return "", fmt.Errorf("FPT failed after %d API attempts, last error: %v", maxAPIRetries, lastErr)
 }
 

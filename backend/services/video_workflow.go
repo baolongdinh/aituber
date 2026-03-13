@@ -244,8 +244,8 @@ func (s *VideoWorkflowService) gatherAndConcatStockVideos(
 
 			s.jobManager.UpdateProgress(jobID, fmt.Sprintf("Fetching stock video for segment %d/%d", idx+1, len(segments)), 50+idx*30/len(segments))
 
-			// Create a per-segment context with timeout (3 mins per segment should be plenty)
-			segCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			// Create a per-segment context with timeout (matching the 2-hour poll request)
+			segCtx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
 			defer cancel()
 
 			vp, err := s.stockVideoService.PrepareSegmentVideo(

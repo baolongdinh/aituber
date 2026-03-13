@@ -1014,7 +1014,7 @@ func (sv *StockVideoService) generateImageRemoteHub(ctx context.Context, prompt 
 	payload := map[string]interface{}{
 		"Prompt":    prompt,
 		"ModelName": "image_flux2_text_to_image_9b",
-		"Steps":     20,
+		"Steps":     10,
 	}
 
 	// Resolution for Flux1-schnell/Mochi usually works best with 1024x1024 or similar

@@ -115,19 +115,8 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	// Set default speaking speed if not provided
-	if req.SpeakingSpeed == 0 {
-		if req.Platform == "tiktok" {
-			req.SpeakingSpeed = 1.2
-		} else {
-			req.SpeakingSpeed = 1.0
-		}
-	}
-	// Validate speaking speed range
-	if req.SpeakingSpeed < 0.5 || req.SpeakingSpeed > 2.0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Speaking speed must be between 0.5 and 2.0"})
-		return
-	}
+	// Force speaking speed to 0.8 for FPT TTS (hard-coded, not user-configurable)
+	req.SpeakingSpeed = 0.8
 
 	// Auto-generate ContentName from topic if not provided
 	if req.ContentName == "" {
@@ -232,6 +221,7 @@ func (h *VideoHandler) Download(c *gin.Context) {
 	}
 
 	// Stream video file
+	fmt.Printf("[Download] Serving file for job %s: %s\n", jobID, job.VideoPath)
 	c.Header("Content-Type", "video/mp4")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=video_%s.mp4", jobID))
 	c.File(job.VideoPath)

@@ -68,13 +68,8 @@ func (sh *SeriesHandler) GenerateSeries(c *gin.Context) {
 	}
 
 	// Default speaking speed
-	if req.SpeakingSpeed == 0 {
-		if req.Platform == "tiktok" {
-			req.SpeakingSpeed = 1.2
-		} else {
-			req.SpeakingSpeed = 1.0
-		}
-	}
+	// Force speaking speed to 0.8 for FPT TTS (hard-coded)
+	req.SpeakingSpeed = 0.8
 
 	// Slug content name
 	baseName := req.ContentName

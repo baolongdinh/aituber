@@ -7,6 +7,7 @@ ai-videos/
 # Backend
 backend/aituber
 
+backend/cache/
 node_modules
 
 # Frontend

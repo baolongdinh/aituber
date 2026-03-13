@@ -24,27 +24,6 @@
       </div>
     </div>
 
-    <!-- Speaking Speed -->
-    <div class="config-group">
-      <label class="group-label">Tốc độ & Cảm xúc</label>
-      <div class="speed-controls">
-        <div class="speed-slider-wrap">
-          <input
-            type="range"
-            v-model.number="localConfig.speaking_speed"
-            min="0.5"
-            max="2.0"
-            step="0.1"
-            class="range-slider"
-            @input="emitUpdate"
-          />
-        </div>
-        <div class="speed-value-card">
-          <span class="speed-num">{{ localConfig.speaking_speed.toFixed(1) }}</span>
-          <span class="speed-unit">x</span>
-        </div>
-      </div>
-    </div>
 
     <!-- Summary -->
     <div class="config-summary">
@@ -68,7 +47,6 @@ const props = defineProps({
     type: Object,
     default: () => ({
       voice: 'banmai',
-      speaking_speed: 1.0,
       tts_provider: 'fpt',
     })
   }
@@ -223,53 +201,6 @@ const voiceOptions = [
   color: #63b3ff;
 }
 
-/* ── Speed Controls ── */
-.speed-controls {
-  background: rgba(0,0,0,0.2);
-  border: 1px solid var(--card-border);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-
-.speed-slider-wrap { flex: 1; }
-
-.range-slider {
-  width: 100%;
-  height: 6px;
-  appearance: none;
-  background: rgba(255,255,255,0.1);
-  border-radius: var(--radius-full);
-  outline: none;
-}
-
-.range-slider::-webkit-slider-thumb {
-  appearance: none;
-  width: 18px;
-  height: 18px;
-  background: #fff;
-  border: 3px solid #63b3ff;
-  border-radius: 50%;
-  box-shadow: 0 0 10px rgba(99, 179, 255, 0.4);
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.range-slider::-webkit-slider-thumb:hover { transform: scale(1.1); }
-
-.speed-value-card {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-  padding: 6px 12px;
-  min-width: 60px;
-  text-align: center;
-}
-
-.speed-num { font-weight: 800; font-size: 1rem; color: #fff; }
-.speed-unit { font-size: 0.7rem; font-weight: 700; color: var(--text-dim); margin-left: 2px; }
 
 /* ── Config Summary ── */
 .config-summary {

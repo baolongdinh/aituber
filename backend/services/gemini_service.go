@@ -82,32 +82,52 @@ type geminiResponse struct {
 
 // GenerateYouTubeScript generates a long-form YouTube script from a topic
 func (gs *GeminiService) GenerateYouTubeScript(topic string) ([]models.VideoSegment, error) {
-	prompt := fmt.Sprintf(`Bạn là chuyên gia tạo content YouTube viral bằng tiếng Việt được 1 triệu view. Hãy viết kịch bản video YouTube về: "%s"
+	prompt := fmt.Sprintf(`You are an expert Vietnamese YouTube scriptwriter AND visual director. Your task is to write a complete video script about: "%s"
 
-CẤU TRÚC: Hook, Problem, Nội dung chính, CTA.
+PHASE 1 — GENRE DETECTION & STYLE BIBLE:
+First, identify the genre of this topic: (Documentary/News, Science/Tech, History, Fashion/Lifestyle, Nature, etc.)
+Then define the VISUAL STYLE BIBLE for this genre:
+- SUBJECT/NARRATOR: One consistent visual anchor (e.g., for documentary: "Middle Eastern cityscape at dusk", for science: "Modern lab setting with specific equipment", for news: "War journalist in tactical vest")
+- VISUAL GRAMMAR: Camera style (drone, handheld, static), color grade (warm, cold, desaturated), film quality (8K sharp, gritty grain, cinematic)
+- MOOD: Atmosphere that fits the topic (tense, inspiring, mysterious, urgent)
 
-QUY TẮC NHẤT QUÁN THỊ GIÁC (UNIVERSAL VISUAL CONSISTENCY):
-1. XÁC ĐỊNH CHỦ THỂ: Chọn 1 nhân vật/khí tài/vật thể chính cố định (VD: "Máy bay chiến đấu F-35 vân rằn ri xám, vỏ kim loại nhám", hoặc "Nam giáo sư 50 tuổi, râu quai nón, mắt kính gọng đen, sơ mi caro xanh").
-2. DUY TRÌ: Mọi visual_description phải mô tả nhất quán đặc điểm đã chọn.
+PHASE 2 — WRITE THE SCRIPT:
+Structure: Hook → Problem → Main content → CTA
+Length: 1000–1500 Vietnamese words. Each text segment: 10–15 words.
+Total: 30–50 JSON segments.
 
-SIÊU YÊU CẦU CHI TIẾT (UNIVERSAL GOLD STANDARD):
-- Công thức bắt buộc: [Bố cục & Góc máy] + [Ánh sáng/Thời tiết/Khí quyển] + [Chủ thể & Chi tiết vật lý/Chất liệu] + [Hiệu ứng/Texture] + [8k quality].
-- Ví dụ Fashion: "Urban alleyway at dusk... rose-gold metallic trench coat... white architectural sneakers... photorealistic."
-- Ví dụ News/War: "Cinematic wide shot of a dusty Middle Eastern outskirts at sunrise. A burnt-out T-72 tank with rusted metallic texture and shrapnel holes... black acrid smoke billowing... hyper-realistic, 8k, extreme clarity."
-- Yêu cầu dùng từ ngữ vật lý: kim loại, khói, bùn, vết xước, sợi vải, tán lá, giọt nước. KHÔNG dùng từ trừu tượng.
+CRITICAL RULE FOR visual_description:
+Each visual_description MUST ILLUSTRATE EXACTLY what the "text" is saying at that moment.
+ASK YOURSELF: "If someone reads this text, what specific image would make a great B-roll for it?"
 
-YÊU CẦU SCRIPT: 1000-1500 từ. Nhịp nhanh: mỗi segment 10-15 từ. JSON 30-50 phần tử.
+Example mapping (topic: Middle East conflict):
+- text: "Hàng triệu người dân phải rời bỏ nhà cửa vì chiến tranh"
+  ✅ visual_description: "Low-angle cinematic shot, Syrian refugee camp at dawn, rows of white canvas tents stretching to horizon, exhausted families with bundled belongings walking along dusty road, children clutching parents, pale morning light, desaturated color grade, 8K documentary style."
+  ❌ BAD: "A man walks past a cracked wall" (unrelated to mass displacement)
 
-BẮT BUỘC trả về JSON ARRAY (không kèm text khác):
+- text: "Dầu mỏ — thứ vàng đen khiến cả thế giới nhòm ngó Trung Đông"
+  ✅ visual_description: "Extreme wide shot, vast oil field at sunset in Saudi Arabia desert, dozens of pump jacks rhythmically nodding, orange-red sky reflecting off black crude pools, thick industrial pipes, shallow depth of field, cinematic 8K."
+
+FORMULA for EVERY visual_description:
+"[Camera angle + movement], [Location/Setting that fits the TEXT content], [Specific objects/people/action that ILLUSTRATE the text], [Lighting that matches mood], [Texture details], [Film style]."
+
+ADDITIONAL RULES:
+- visual_description: ENGLISH ONLY, min 60 words.
+- pexels_search_query: 4–6 English keywords matching the visual.
+- text: Vietnamese only.
+- Keep consistent visual grammar (same film style, same color grade) across segments.
+- NEVER generate a visual that contradicts or ignores the text content.
+- Return ONLY a JSON array, no other text.
+
 [
   {
-    "text": "Lời thoại ngắn...",
-    "pexels_search_query": "English keywords",
-    "visual_description": "Universal Gold Standard description in English (Consistent Subject + Physics-based Material Details + Lighting + 8k details)."
+    "text": "Vietnamese narration (10–15 words)...",
+    "pexels_search_query": "english keywords matching visual",
+    "visual_description": "Cinematic description that ILLUSTRATES the text content (min 60 words, English)."
   }
 ]`, topic)
 
-	result, err := gs.callGemini(prompt, 0.75, 8192)
+	result, err := gs.callGemini(prompt, 0.65, 8192)
 	if err != nil {
 		return nil, err
 	}
@@ -116,31 +136,45 @@ BẮT BUỘC trả về JSON ARRAY (không kèm text khác):
 
 // GenerateTikTokScript generates a short, viral TikTok script from a topic
 func (gs *GeminiService) GenerateTikTokScript(topic string) ([]models.VideoSegment, error) {
-	prompt := fmt.Sprintf(`Bạn là chuyên gia Content Creator mảng TikTok/Shorts phong cách kể chuyện (storytelling) tiếng Việt. Viết kịch bản TikTok 1m30s - 1m50s về: "%s"
+	prompt := fmt.Sprintf(`You are a viral Vietnamese TikTok director and storyteller. Write a complete 1m30s–2m TikTok script in Vietnamese about: "%s"
 
-QUY TẮC NHẤT QUÁN THỊ GIÁC (UNIVERSAL VISUAL CONSISTENCY):
-1. CHỦ THỂ CỐ ĐỊNH: Chọn 1 nhân vật/vật thể duy nhất cho video (VD: "Cô gái Việt Nam, áo lụa xanh mint", hoặc "Chiếc drone AI màu trắng bạc, 4 cánh quạt").
-2. DUY TRÌ: Nhân vật/vật thể này phải xuất hiện nhất quán mọi visual_description để AI giữ được identity. 
+DURATION REQUIREMENTS (NON-NEGOTIABLE — you MUST meet these):
+- MINIMUM 25 JSON segments. Target is 28-30 segments. COUNT before you output.
+- Each "text" segment: 10-16 Vietnamese words. NO shorter.
+- Total words across ALL text segments combined: MINIMUM 280 words.
+- If you are about to stop before 25 segments, detect this and ADD MORE content.
 
-SIÊU YÊU CẦU CHI TIẾT (UNIVERSAL GOLD STANDARD):
-- Công thức: [Góc máy] + [Ánh sáng/Bối cảnh] + [Chủ thể & Chi tiết vật lý/Chất liệu/Trang phục] + [Hiệu ứng] + [Đặc tả bề mặt/Texture].
-- Ví dụ Fashion: "High-fashion model strides elegantly... wears a rose-gold metallic trench coat... white architectural sneakers... no grain, no blur."
-- Ví dụ News/War/Science: "Cinematic close-up of a high-tech lab. A robotic arm with brushed aluminum texture and exposed wiring... soft cyan glowing lights... hyper-realistic, sharp focus."
-- Dùng từ ngữ vật lý (kim loại, vải lụa, khói, bùn,...), không dùng từ trừu tượng.
+SCRIPT STRUCTURE (expand each section, do not rush):
+- Segments 1-3: Hook. A shocking statistic or controversial question that grabs attention.
+- Segments 4-8: Set the scene. Historical context, geography, key players involved.
+- Segments 9-14: Cause and effect. Why did this happen? Who benefits? Show the chain of events.
+- Segments 15-20: Evidence and turning points. Specific events, dates, consequences.
+- Segments 21-25: The hidden angle. What most people don't know. The unexpected twist.
+- Segments 26-30: Emotional conclusion. What does this mean for us? CTA to follow.
 
-NHỊP ĐIỆU: Mỗi segment 8-12 từ. Mảng JSON 20-30 phần tử.
+VISUAL RULE: Each visual_description must ILLUSTRATE EXACTLY what the text says.
+Examples for a Middle East documentary topic:
+- text: "Hàng chục quốc gia cung cấp vũ khi cho cac phe phai khac nhau"
+  visual: "Wide aerial shot, dusty Syrian border crossing, military convoys with various national markings crossing checkpoint, armed soldiers inspecting cargo trucks, harsh afternoon desert light, documentary drone footage style."
+- text: "Dau mo bien Trung Dong thanh chiec banh ngot ma ca the gioi muon giang tay"
+  visual: "Extreme wide shot, sprawling Saudi oil field at golden hour, hundreds of pump jacks moving rhythmically, thick black pipelines stretching to horizon, orange sky reflecting off crude oil surface, cinematic 8K."
 
-BẮT BUỘC trả về JSON ARRAY:
+FORMULA: "[Camera], [Specific subject from TEXT], [Action mirroring narration], [Lighting], [Film style]."
+
+CONSISTENCY: Use same color grade and film style in ALL visual_descriptions.
+
+SELF-CHECK: Before returning, count your segments. If less than 25, add more script content.
+
+Return ONLY a valid JSON array. No markdown, no explanation:
 [
   {
-    "text": "Câu kịch bản ngắn (8-12 từ)...",
-    "pexels_search_query": "English keywords for stock",
-    "visual_description": "Extremely detailed description in English (Consistent Subject + Physics-based Materials + Lighting + 4k details)."
+    "text": "Cau tieng Viet 10-16 tu...",
+    "pexels_search_query": "english keywords",
+    "visual_description": "Cinematic B-roll mirroring text, English, min 50 words."
   }
 ]`, topic)
 
-	// Temperature 0.8 to encourage creative, natural storytelling
-	result, err := gs.callGemini(prompt, 0.8, 8192)
+	result, err := gs.callGemini(prompt, 0.70, 8192)
 	if err != nil {
 		return nil, err
 	}
