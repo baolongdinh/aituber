@@ -76,7 +76,7 @@ func main() {
 	)
 	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
 	hfService := services.NewHuggingFaceService(cfg.HuggingFaceTokens)
-	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService, cfg.LocalHubURL)
+	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService, cfg.LocalHubURL, cfg.RemoteHubURL, cfg.RemoteHubToken)
 	composerService := services.NewComposerService(cfg.VideoBitrate)
 
 	// 4. Orchestrator Workflow

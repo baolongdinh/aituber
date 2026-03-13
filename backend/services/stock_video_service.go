@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"sync"
 	"time"
@@ -20,28 +21,32 @@ import (
 
 // StockVideoService handles stock video searching and downloading
 type StockVideoService struct {
-	apiKey        string
-	httpClient    *http.Client
-	tempDir       string
-	cacheDir      string
-	geminiService *GeminiService      // AI image fallback tier 4
-	hfService     *HuggingFaceService // AI image fallback tier 3 (preferred, cheaper)
-	localHubURL   string              // Local Hub Tier (sequential CPU generation)
-	jobMediaTrack sync.Map            // Tracks used links/keywords per jobID to guarantee uniqueness
+	apiKey         string
+	httpClient     *http.Client
+	tempDir        string
+	cacheDir       string
+	geminiService  *GeminiService      // AI image fallback tier 4
+	hfService      *HuggingFaceService // AI image fallback tier 3 (preferred, cheaper)
+	localHubURL    string              // Local Hub Tier (sequential CPU generation)
+	remoteHubURL   string              // Remote Hub Tier 0 (High Priority)
+	remoteHubToken string              // Remote Hub Auth Token
+	jobMediaTrack  sync.Map            // Tracks used links/keywords per jobID to guarantee uniqueness
 }
 
 // NewStockVideoService creates a new stock video service
-func NewStockVideoService(apiKey, tempDir, cacheDir string, geminiSvc *GeminiService, hfSvc *HuggingFaceService, localHubURL string) *StockVideoService {
+func NewStockVideoService(apiKey, tempDir, cacheDir string, geminiSvc *GeminiService, hfSvc *HuggingFaceService, localHubURL, remoteHubURL, remoteHubToken string) *StockVideoService {
 	return &StockVideoService{
 		apiKey: apiKey,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
-		tempDir:       tempDir,
-		cacheDir:      cacheDir,
-		geminiService: geminiSvc,
-		hfService:     hfSvc,
-		localHubURL:   localHubURL,
+		tempDir:        tempDir,
+		cacheDir:       cacheDir,
+		geminiService:  geminiSvc,
+		hfService:      hfSvc,
+		localHubURL:    localHubURL,
+		remoteHubURL:   remoteHubURL,
+		remoteHubToken: remoteHubToken,
 	}
 }
 
@@ -166,6 +171,38 @@ func (sv *StockVideoService) PrepareSegmentVideo(ctx context.Context, keywords s
 		if sv.cacheDir != "" && visualDesc != "" {
 			cachePath := filepath.Join(sv.cacheDir, cacheKey+".mp4")
 			_ = utils.CopyFile(srcPath, cachePath)
+		}
+	}
+
+	// TIER 0: Remote AI Hub (Highest Priority)
+	if sv.remoteHubURL != "" && visualDesc != "" {
+		fmt.Printf("[SegVideo %d] Remote Hub configured (%s) and visualDesc provided: %q\n", segIndex, sv.remoteHubURL, visualDesc)
+		remoteVideoPath := filepath.Join(segDir, "remote_hub_output.mp4")
+		fmt.Printf("[SegVideo %d] Attempting Remote Hub (Priority 0) with prompt: %q\n", segIndex, visualDesc)
+		if imgBytes, err := sv.generateImageRemoteHub(ctx, visualDesc, orientation); err == nil {
+			fmt.Printf("[SegVideo %d] Remote Hub returned %d bytes of image data\n", segIndex, len(imgBytes))
+			imgPath := filepath.Join(segDir, "remote_hub.png")
+			if err := os.WriteFile(imgPath, imgBytes, 0644); err == nil {
+				fmt.Printf("[SegVideo %d] Successfully wrote image to: %s\n", segIndex, imgPath)
+				if err := utils.ImageToVideo(imgPath, remoteVideoPath, audioDuration+0.4, orientation); err == nil {
+					fmt.Printf("[SegVideo %d] Remote Hub generation SUCCEEDED!\n", segIndex)
+					saveToCache(remoteVideoPath)
+					return remoteVideoPath, nil
+				} else {
+					fmt.Printf("[SegVideo %d] Remote Hub ImageToVideo failed: %v\n", segIndex, err)
+				}
+			} else {
+				fmt.Printf("[SegVideo %d] Failed to write image file: %v\n", segIndex, err)
+			}
+		} else {
+			fmt.Printf("[SegVideo %d] Remote Hub failed: %v. Moving to Local Hub Tier...\n", segIndex, err)
+		}
+	} else {
+		if sv.remoteHubURL == "" {
+			fmt.Printf("[SegVideo %d] Remote Hub skipped: URL not configured\n", segIndex)
+		}
+		if visualDesc == "" {
+			fmt.Printf("[SegVideo %d] Remote Hub skipped: visualDesc is empty\n", segIndex)
 		}
 	}
 
@@ -963,4 +1000,147 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 
 	// Trim to target duration + 2s buffer
 	return utils.TrimVideo(mergedPath, outputPath, targetDuration+2.0)
+}
+
+// generateImageRemoteHub calls the remote AI hub service with polling
+func (sv *StockVideoService) generateImageRemoteHub(ctx context.Context, prompt string, orientation string) ([]byte, error) {
+	fmt.Printf("[RemoteHub] Starting generation with prompt: %q, orientation: %s\n", prompt, orientation)
+
+	if sv.remoteHubURL == "" {
+		return nil, fmt.Errorf("remote hub URL not configured")
+	}
+
+	apiURL := fmt.Sprintf("%s/api/v1/generate/image", sv.remoteHubURL)
+	payload := map[string]interface{}{
+		"Prompt":    prompt,
+		"ModelName": "image_flux2_text_to_image_9b",
+		"Steps":     20,
+	}
+
+	// Resolution for Flux1-schnell/Mochi usually works best with 1024x1024 or similar
+	// Even though the prompt says 1024x1024, we set based on orientation
+	if orientation == "portrait" {
+		payload["Width"] = 1024
+		payload["Height"] = 1536 // Portrait
+	} else {
+		payload["Width"] = 1536 // Landscape
+		payload["Height"] = 1024
+	}
+
+	fmt.Printf("[RemoteHub] Calling API: %s\n", apiURL)
+
+	jsonPayload, _ := json.Marshal(payload)
+	req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+sv.remoteHubToken)
+	req.Header.Set("accept", "application/json")
+
+	fmt.Printf("[RemoteHub] Sending request with token length: %d\n", len(sv.remoteHubToken))
+
+	resp, err := sv.httpClient.Do(req)
+	if err != nil {
+		fmt.Printf("[RemoteHub] Request failed: %v\n", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("[RemoteHub] Failed to read response body: %v\n", err)
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("[RemoteHub] Error response body: %s\n", string(respBody))
+		return nil, fmt.Errorf("remote hub returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var initResp struct {
+		Status string `json:"status"`
+		Data   struct {
+			JobID string `json:"job_id"`
+			URL   string `json:"url"`
+		} `json:"data"`
+	}
+
+	if err := json.Unmarshal(respBody, &initResp); err != nil {
+		fmt.Printf("[RemoteHub] Failed to decode response: %v\n", err)
+		return nil, err
+	}
+
+	fmt.Printf("[RemoteHub] Initial response - Status: %s, JobID: %s, URL: %s\n", initResp.Status, initResp.Data.JobID, initResp.Data.URL)
+
+	if initResp.Status != "success" {
+		return nil, fmt.Errorf("remote hub initial request failed: %s", initResp.Status)
+	}
+
+	pollingURL := initResp.Data.URL
+	fmt.Printf("[RemoteHub] Job %s queued. Polling URL: %s\n", initResp.Data.JobID, pollingURL)
+
+	// Polling logic
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	timeout := time.After(2 * time.Hour) // User requested 2 hours timeout
+	pollCount := 0
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Printf("[RemoteHub] Context cancelled after %d polls\n", pollCount)
+			return nil, ctx.Err()
+		case <-timeout:
+			fmt.Printf("[RemoteHub] Timeout after %d polls\n", pollCount)
+			return nil, fmt.Errorf("remote hub generation timed out after 2 hours")
+		case <-ticker.C:
+			pollCount++
+			fmt.Printf("[RemoteHub] Poll attempt #%d for URL: %s\n", pollCount, pollingURL)
+
+			pReq, err := http.NewRequestWithContext(ctx, "GET", pollingURL, nil)
+			if err != nil {
+				fmt.Printf("[RemoteHub] Failed to create polling request: %v\n", err)
+				continue
+			}
+			pReq.Header.Set("Authorization", "Bearer "+sv.remoteHubToken)
+
+			pResp, err := sv.httpClient.Do(pReq)
+			if err != nil {
+				fmt.Printf("[RemoteHub] Polling error: %v (retrying...)\n", err)
+				continue
+			}
+
+			// If it's the image, it should return 200 and image content type
+			if pResp.StatusCode == http.StatusOK {
+				contentType := pResp.Header.Get("Content-Type")
+				if strings.HasPrefix(contentType, "image/") {
+					fmt.Printf("[RemoteHub] Image ready! Downloading...\n")
+					defer pResp.Body.Close()
+					return io.ReadAll(pResp.Body)
+				}
+
+				// If it's still returning JSON, check if it failed
+				var pollStatus struct {
+					Status string `json:"status"`
+					Data   struct {
+						Status string `json:"status"`
+					} `json:"data"`
+				}
+				bodyBytes, _ := io.ReadAll(pResp.Body)
+				pResp.Body.Close()
+				if decodeErr := json.Unmarshal(bodyBytes, &pollStatus); decodeErr == nil {
+					if pollStatus.Status == "failed" || pollStatus.Data.Status == "failed" {
+						fmt.Printf("[RemoteHub] Generation failed explicitly: %s\n", string(bodyBytes))
+						return nil, fmt.Errorf("remote hub generation failed explicitly")
+					}
+				}
+				fmt.Printf("[RemoteHub] Response received (200), but not an image yet: %s (retrying...)\n", contentType)
+			} else {
+				fmt.Printf("[RemoteHub] Unexpected status %d (retrying...)\n", pResp.StatusCode)
+				pResp.Body.Close()
+			}
+		}
+	}
 }

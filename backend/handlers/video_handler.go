@@ -67,7 +67,7 @@ func NewVideoHandler(cfg *config.Config) *VideoHandler {
 
 	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
 	hfService := services.NewHuggingFaceService(cfg.HuggingFaceTokens)
-	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService, cfg.LocalHubURL)
+	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService, cfg.LocalHubURL, cfg.RemoteHubURL, cfg.RemoteHubToken)
 	composerService := services.NewComposerService(cfg.VideoBitrate)
 
 	// Create job manager and workflow

@@ -21,17 +21,17 @@
         <div class="platform-switch">
           <button
             class="switch-btn"
-            :class="{ active: platform === 'youtube' }"
-            @click="setPlatform('youtube')"
-          >
-            🎬 YouTube
-          </button>
-          <button
-            class="switch-btn"
             :class="{ active: platform === 'tiktok' }"
             @click="setPlatform('tiktok')"
           >
             ⚡ TikTok
+          </button>
+          <button
+            class="switch-btn"
+            :class="{ active: platform === 'youtube' }"
+            @click="setPlatform('youtube')"
+          >
+            🎬 YouTube
           </button>
         </div>
       </div>
@@ -118,7 +118,7 @@ import ResultPreview from './components/ResultPreview.vue'
 import { useVideoGeneration } from './composables/useVideoGeneration'
 
 // Platform state
-const platform = ref('youtube')
+const platform = ref('tiktok')
 const setPlatform = (p) => {
   platform.value = p
   handleReset()

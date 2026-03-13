@@ -28,7 +28,7 @@ func TestStockVideoService_PrepareSegmentVideo_FullFallback(t *testing.T) {
 	hfSvc := NewHuggingFaceService([]string{"mock_token"})
 	geminiSvc := NewGeminiService([]string{"mock_key"})
 
-	sv := NewStockVideoService("mock_pexels", tempDir, cacheDir, geminiSvc, hfSvc, "http://localhost:5000")
+	sv := NewStockVideoService("mock_pexels", tempDir, cacheDir, geminiSvc, hfSvc, "http://localhost:5000", "", "")
 
 	t.Run("Pexels Success (Tier 1/2 Equivalent in search)", func(t *testing.T) {
 		// Mock HTTP client for Pexels search and download

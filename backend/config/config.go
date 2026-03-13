@@ -26,6 +26,8 @@ type Config struct {
 	VideoAPIKeys     []string
 	GeminiAPIKeys    []string
 	LocalHubURL      string
+	RemoteHubURL     string
+	RemoteHubToken   string
 
 	// Processing Settings
 	MaxTextLength        int
@@ -70,6 +72,8 @@ func LoadConfig() (*Config, error) {
 		VideoAPIKeys:     parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
 		GeminiAPIKeys:    parseAPIKeys(getEnv("GEMINI_API_KEYS", "")),
 		LocalHubURL:      getEnv("LOCAL_HUB_URL", "http://localhost:5000"),
+		RemoteHubURL:     getEnv("REMOTE_HUB_URL", "http://10.0.0.224:8081"),
+		RemoteHubToken:   getEnv("REMOTE_HUB_TOKEN", ""),
 
 		// Processing settings
 		MaxTextLength:        getEnvAsInt("MAX_TEXT_LENGTH", 50000),
