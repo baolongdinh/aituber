@@ -84,35 +84,28 @@ type geminiResponse struct {
 func (gs *GeminiService) GenerateYouTubeScript(topic string) ([]models.VideoSegment, error) {
 	prompt := fmt.Sprintf(`Bạn là chuyên gia tạo content YouTube viral bằng tiếng Việt được 1 triệu view. Hãy viết kịch bản video YouTube về: "%s"
 
-CẤU TRÚC BẮT BUỘC:
-- Hook (0-15s): 1 câu hỏi cực mạnh hoặc 1 sự thật gây sốc, tạo tò mò ngay lập tức
-- Problem Setup (15-45s): Đặt bối cảnh, tại sao người xem phải quan tâm
-- Nội dung chính (3-6 phần, mỗi phần 60-90s): Mỗi phần một insight cụ thể, có dẫn chứng
-- CTA cuối: Nhắc subscribe và goiý video liên quan
+CẤU TRÚC: Hook, Problem, Nội dung chính, CTA.
 
-YÊU CẦU NỘI DUNG:
-- Tổng script: 1000-1500 từ tiếng Việt.
-- NHIP ĐIỆU CỰC NHANH (BẮT BUỘC): Mỗi "text" segment PHẢI CHỈ TỪ 10-15 từ (tương đương 2-3 giây đọc). 
-- ĐA DẠNG BỐI CẢNH (QUY TẮC SỐ 1): Mỗi phân đoạn PHẢI mô tả một bối cảnh hình ảnh (visual_description) và từ khóa (pexels_search_query) HOÀN TOÀN MỚI, KHÁC BIỆT so với đoạn trước đó. Cấm dùng lại Subject cũ hay Action cũ.
-- VISUAL HOOK (3S ĐẦU): Các segment thuộc phần Hook (0-5s) PHẢI có mô tả hình ảnh cực dồn dập, màu sắc rực rỡ hoặc bối cảnh gây shock (ví dụ: 'explosive colors', 'dramatic zoom', 'extreme close-up').
-- NHẤT QUÁN PHONG CÁCH (STYLE): Hãy chọn 1 phong cách hình ảnh đại diện (ví dụ: 'Cinematic Movie', 'Cyberpunk Digital Art', 'Vintage Film') và áp dụng phong cách đó vào MỌI visual_description để video đồng nhất.
-- Mảng JSON trả về phải có từ 30 đến 50 phần tử. KHÔNG ĐƯỢC LƯỜI BIẾNG.
+QUY TẮC NHẤT QUÁN THỊ GIÁC (UNIVERSAL VISUAL CONSISTENCY):
+1. XÁC ĐỊNH CHỦ THỂ: Chọn 1 nhân vật/khí tài/vật thể chính cố định (VD: "Máy bay chiến đấu F-35 vân rằn ri xám, vỏ kim loại nhám", hoặc "Nam giáo sư 50 tuổi, râu quai nón, mắt kính gọng đen, sơ mi caro xanh").
+2. DUY TRÌ: Mọi visual_description phải mô tả nhất quán đặc điểm đã chọn.
 
-BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác):
+SIÊU YÊU CẦU CHI TIẾT (UNIVERSAL GOLD STANDARD):
+- Công thức bắt buộc: [Bố cục & Góc máy] + [Ánh sáng/Thời tiết/Khí quyển] + [Chủ thể & Chi tiết vật lý/Chất liệu] + [Hiệu ứng/Texture] + [8k quality].
+- Ví dụ Fashion: "Urban alleyway at dusk... rose-gold metallic trench coat... white architectural sneakers... photorealistic."
+- Ví dụ News/War: "Cinematic wide shot of a dusty Middle Eastern outskirts at sunrise. A burnt-out T-72 tank with rusted metallic texture and shrapnel holes... black acrid smoke billowing... hyper-realistic, 8k, extreme clarity."
+- Yêu cầu dùng từ ngữ vật lý: kim loại, khói, bùn, vết xước, sợi vải, tán lá, giọt nước. KHÔNG dùng từ trừu tượng.
+
+YÊU CẦU SCRIPT: 1000-1500 từ. Nhịp nhanh: mỗi segment 10-15 từ. JSON 30-50 phần tử.
+
+BẮT BUỘC trả về JSON ARRAY (không kèm text khác):
 [
   {
-    "text": "Đoạn script tiếng Việt (khoảng 50-100 từ)...",
-    "pexels_search_query": "person running fast stress city",
-    "visual_description": "Cinematic close-up of a young man with a determined expression, sprinting through a crowded neon-lit futuristic city street at night, heavy rain falling, motion blur in the background, 4k ultra-realistic."
+    "text": "Lời thoại ngắn...",
+    "pexels_search_query": "English keywords",
+    "visual_description": "Universal Gold Standard description in English (Consistent Subject + Physics-based Material Details + Lighting + 8k details)."
   }
-]
-
-QUY TẮC pexels_search_query (BẮT BUỘC):
-1. Phải là tiếng Anh ngắn gọn (2-5 từ)
-2. PHẢI có ĐỘNG TỪ mô tả chuyển động: running, falling, flying, exploding, rising, spinning, zooming
-3. Mô tả hình ảnh B-roll trực quan, KHÔNG trừu tượng
-4. Ví dụ TỐT: "money falling slow motion", "athlete running sunrise", "city timelapse traffic"
-5. Ví dụ XẤU: "success", "teamwork", "growth" (quá chung chung)`, topic)
+]`, topic)
 
 	result, err := gs.callGemini(prompt, 0.75, 8192)
 	if err != nil {
@@ -123,38 +116,28 @@ QUY TẮC pexels_search_query (BẮT BUỘC):
 
 // GenerateTikTokScript generates a short, viral TikTok script from a topic
 func (gs *GeminiService) GenerateTikTokScript(topic string) ([]models.VideoSegment, error) {
-	prompt := fmt.Sprintf(`Bạn là chuyên gia Content Creator mảng TikTok/Shorts (hàng triệu view) với phong cách sâu sắc, lôi cuốn và kể chuyện (storytelling) cực đỉnh bằng tiếng Việt. Viết 1 kịch bản TikTok/Shorts có thời lượng tự nhiên rơi vào khoảng 1 phút 30 giây đến 1 phút 50 giây (1m30s - 1m50s) về: "%s"
+	prompt := fmt.Sprintf(`Bạn là chuyên gia Content Creator mảng TikTok/Shorts phong cách kể chuyện (storytelling) tiếng Việt. Viết kịch bản TikTok 1m30s - 1m50s về: "%s"
 
-CẤU TRÚC BẮT BUỘC:
-- HOOK (0-5s): 1 câu mở đầu mang tính lật đổ nhận thức thông thường hoặc đánh trúng tim đen. Phải cực cháy!
-- STORY/PROBLEM SETUP (5-20s): Đưa ra một câu chuyện ngắn hoặc đào sâu vào nỗi đau/vấn đề. Tạo sự đồng cảm mạnh mẽ.
-- THE "MEAT" / INSIGHTS DUMPS (20-80s): 3-4 góc nhìn hoặc bài học thực chiến sâu sắc. Đừng nói những thứ chung chung ai cũng biết trên mạng. Phải có dẫn chứng, ví dụ thực tế hoặc logic thuyết phục.
-- CLIMAX & PAYOFF (80-100s): Cú twist, bài học đọng lại hoặc kết luận thay đổi tư duy.
-- CTA (100s+): Kêu gọi hành động tự nhiên, không gượng ép (VD: "Lưu video này lại để...").
+QUY TẮC NHẤT QUÁN THỊ GIÁC (UNIVERSAL VISUAL CONSISTENCY):
+1. CHỦ THỂ CỐ ĐỊNH: Chọn 1 nhân vật/vật thể duy nhất cho video (VD: "Cô gái Việt Nam, áo lụa xanh mint", hoặc "Chiếc drone AI màu trắng bạc, 4 cánh quạt").
+2. DUY TRÌ: Nhân vật/vật thể này phải xuất hiện nhất quán mọi visual_description để AI giữ được identity. 
 
-- YÊU CẦU CHẤT LƯỢNG (PO REQUIREMENTS):
-- Độ dài: Khoảng 300 - 450 từ (tiếng Việt). Đảm bảo thời lượng ~1m40s.
-- NHIP ĐIỆU CỰC NHANH (BẮT BUỘC): Mỗi segment "text" PHẢI CHỈ TỪ 8-12 từ (~1.5 đến 2 giây đọc). 
-- CẢNH MỚI HOÀN TOÀN: Tuyệt đối không để một bối cảnh hình ảnh lặp lại. Mỗi segment phải là một hình ảnh mới hoàn toàn.
-- VISUAL HOOK (CỰC CHÁY): Trong 3-5 giây đầu tiên, hình ảnh phải cực kỳ kịch tính, màu sắc mạnh hoặc bối cảnh gây shock (VD: 'explosive colors', 'dramatic zoom').
-- ĐỒNG NHẤT STYLE: Chọn duy nhất 1 Tone màu và Style nghệ thuật cho tất cả visual_description xuyên suốt video (VD: 'Cyberpunk', 'Cinematic Movie', 'Anime').
-- PHÂN ĐOẠN DÀY ĐẶC: Mảng JSON trả về PHẢI BAO GỒM TỪ 20 ĐẾN 30 PHẦN TỬ.
-- Tone: Cuốn hút, chân thật, ngôn ngữ đời thường sắc sảo. Như một chuyên gia đang tâm sự mỏng, không dùng từ sáo rỗng.
+SIÊU YÊU CẦU CHI TIẾT (UNIVERSAL GOLD STANDARD):
+- Công thức: [Góc máy] + [Ánh sáng/Bối cảnh] + [Chủ thể & Chi tiết vật lý/Chất liệu/Trang phục] + [Hiệu ứng] + [Đặc tả bề mặt/Texture].
+- Ví dụ Fashion: "High-fashion model strides elegantly... wears a rose-gold metallic trench coat... white architectural sneakers... no grain, no blur."
+- Ví dụ News/War/Science: "Cinematic close-up of a high-tech lab. A robotic arm with brushed aluminum texture and exposed wiring... soft cyan glowing lights... hyper-realistic, sharp focus."
+- Dùng từ ngữ vật lý (kim loại, vải lụa, khói, bùn,...), không dùng từ trừu tượng.
 
-BẮT BUỘC trả về JSON ARRAY (không kèm text gì khác ngoài JSON):
+NHỊP ĐIỆU: Mỗi segment 8-12 từ. Mảng JSON 20-30 phần tử.
+
+BẮT BUỘC trả về JSON ARRAY:
 [
   {
-    "text": "Câu Hook hoặc một đoạn kịch bản ngắn...",
-    "pexels_search_query": "shocked face close up slow motion",
-    "visual_description": "Dramatic low-angle shot of a person dropping their phone in slow motion, eyes wide in disbelief, busy subway station background, high contrast lighting, cinematic aesthetic."
+    "text": "Câu kịch bản ngắn (8-12 từ)...",
+    "pexels_search_query": "English keywords for stock",
+    "visual_description": "Extremely detailed description in English (Consistent Subject + Physics-based Materials + Lighting + 4k details)."
   }
-]
-
-QUY TẮC pexels_search_query (BẮT BUỘC):
-1. Là Tiếng Anh, ngắn gọn 2-5 từ, TẬP TRUNG vào HÀNH ĐỘNG/CHUYỂN ĐỘNG hoặc BIỂU CẢM.
-2. Phù hợp hoàn hảo với mood của đoạn text đó.
-3. Ví dụ TỐT: "person stressed working late", "money falling slow motion", "city crowd walking fast", "brain exploding idea".
-4. TUYỆT ĐỐI KHÔNG dùng từ trừu tượng kiểu "success", "mindset". Không dùng tiếng Việt.`, topic)
+]`, topic)
 
 	// Temperature 0.8 to encourage creative, natural storytelling
 	result, err := gs.callGemini(prompt, 0.8, 8192)
@@ -599,16 +582,15 @@ LUẬT BẮT BUỘC:
 BẮT BUỘC trả về JSON ARRAY (không có text nào khác):
 [
   {
-    "text": "Đoạn script tiếng Việt...",
+    "text": "Đoạn script tiếng Việt ngắn (8-15 từ)...",
     "pexels_search_query": "english short action keywords",
-    "visual_description": "Cinematic 4k detailed description of the scene with character actions, lighting, and camera angle in English."
+    "visual_description": "Consistent cinematic description (UNIVERSAL GOLD STANDARD): [Consistent Subject + Physics-based Material Details] + [Detailed Action] + [Lighting/Environment] + [Ultra-sharp 8k details]."
   }
 ]
 
-QUY TẮC pexels_search_query:
-1. Tiếng Anh, 2-5 từ, có ĐỘNG TỪ/CHUYỂN ĐỘNG
-2. Ví dụ TỐT: "money falling slow motion", "person stressed working late"
-3. KHÔNG dùng từ trừu tượng như "success", "mindset"`,
+QUY TẮC NHẤT QUÁN:
+1. LUÔN CHỌN CHỦ THỂ CỐ ĐỊNH: Nhân vật hoặc vật thể chính phải có mô tả thuộc tính vật lý cụ thể để giữ consistency.
+2. SIÊU CHI TIẾT: Visual_description phải đạt chuẩn chuyên nghiệp, mô tả rõ chất liệu (kim loại, vải, khói, bụi,...) và ánh sáng thực tế.`,
 		seriesCtx.String(),
 		topic,
 		partIndex+1, totalParts, part.Title,

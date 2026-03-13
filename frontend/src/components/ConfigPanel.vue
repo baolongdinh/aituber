@@ -164,7 +164,6 @@ const voiceOptions = [
   cursor: pointer;
   transition: all 0.2s;
 }
-}
 
 /* ── Voice Grid ── */
 .voice-grid {

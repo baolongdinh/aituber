@@ -369,7 +369,7 @@ body {
 
 .content-grid {
   display: grid;
-  grid-template-columns: 440px 1fr;
+  grid-template-columns: 520px 1fr;
   gap: 32px;
   align-items: start;
 }
