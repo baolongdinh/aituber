@@ -1,6 +1,7 @@
 # Environment variables
 .env
 
+*.log
 # Temporary files
 backend/temp/
 ai-videos/
