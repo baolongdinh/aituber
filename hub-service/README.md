@@ -26,6 +26,14 @@ pip install -r requirements.txt
 
 ## 🚀 How to Run
 
+By default, model weights (15-20GB) are stored in your home directory (`~/.cache/huggingface/hub`). If you want to keep them inside the project folder:
+
+```bash
+# Unix/Linux
+export MODELS_DIR="./models"
+python main.py
+```
+
 ```bash
 python main.py
 ```

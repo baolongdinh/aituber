@@ -18,8 +18,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Local AI Hub Service")
 
 # Constants
-OUTPUT_DIR = "outputs"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(SCRIPT_DIR, "outputs")
+MODELS_DIR = os.getenv("MODELS_DIR", os.path.join(SCRIPT_DIR, "models"))
+
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(MODELS_DIR, exist_ok=True)
+
+logger.info(f"Storage locations: Outputs -> {OUTPUT_DIR}, Models -> {MODELS_DIR}")
 
 # Global variables for model and queue
 model_pipe = None
@@ -42,7 +48,8 @@ def load_model():
         # Load the model with CPU optimizations
         model_pipe = FluxPipeline.from_pretrained(
             "black-forest-labs/FLUX.1-schnell",
-            torch_dtype=torch.bfloat16 # Good for RAM and CPU
+            torch_dtype=torch.bfloat16, # Good for RAM and CPU
+            cache_dir=MODELS_DIR
         )
         model_pipe.to("cpu")
         logger.info("Model loaded successfully!")

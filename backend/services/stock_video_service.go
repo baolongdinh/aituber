@@ -393,10 +393,17 @@ func (sv *StockVideoService) processAndTrimStockVideo(downloadedPaths []string, 
 
 // generateImageLocalHub calls the local Python hub service to generate an image
 func (sv *StockVideoService) generateImageLocalHub(ctx context.Context, prompt string, orientation string) ([]byte, error) {
-	// 1. Request generation
+	// 1. Request generation with correct resolution
+	width, height := 1920, 1080 // Default Landscape
+	if orientation == "portrait" {
+		width, height = 1080, 1920
+	}
+
 	genURL := fmt.Sprintf("%s/generate", sv.localHubURL)
 	reqBody, _ := json.Marshal(map[string]interface{}{
 		"prompt":              prompt,
+		"width":               width,
+		"height":              height,
 		"num_inference_steps": 4, // Schnell optimized
 	})
 
