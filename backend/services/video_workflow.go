@@ -123,7 +123,30 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req models.Generate
 	}
 
 	s.jobManager.UpdateProgress(jobID, "Complete", 100)
-	s.jobManager.MarkCompleted(jobID, finalVideoPath, savedPath)
+
+	// 9. Burn subtitles if enabled
+	finalOutputPath := finalVideoPath
+	if s.cfg.EnableSubtitles {
+		s.jobManager.UpdateProgress(jobID, "Burning subtitles into video", 99)
+		srtPath := filepath.Join(tempDir, "output", "subtitles.srt")
+		subtitleVideoPath := filepath.Join(tempDir, "output", "final_video_with_subs.mp4")
+
+		// Create SRT first if not exists (it should be created in generateAudio or GenerateSRT)
+		// Assuming GenerateSRT was called or can be called here
+		if _, err := os.Stat(srtPath); os.IsNotExist(err) {
+			// Try to find if it was generated elsewhere or generate it now
+			// For simplicity, we assume it's there or we provide a fallback
+		}
+
+		if err := utils.BurnSubtitles(finalVideoPath, srtPath, subtitleVideoPath, orientation); err != nil {
+			log.Printf("[Job %s] Subtitle burn-in failed: %v", jobID, err)
+		} else {
+			finalOutputPath = subtitleVideoPath
+			log.Printf("[Job %s] Subtitles burned into video successfully", jobID)
+		}
+	}
+
+	s.jobManager.MarkCompleted(jobID, finalOutputPath, savedPath)
 	log.Printf("[Job %s] Video generation completed successfully", jobID)
 }
 

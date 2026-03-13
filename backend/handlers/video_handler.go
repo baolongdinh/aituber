@@ -116,7 +116,7 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 	}
 
 	// Force speaking speed to -0.5 for FPT TTS (hard-coded, not user-configurable)
-	req.SpeakingSpeed = -0.5
+	req.SpeakingSpeed = 0
 
 	// Auto-generate ContentName from topic if not provided
 	if req.ContentName == "" {

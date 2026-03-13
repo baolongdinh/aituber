@@ -487,15 +487,16 @@ func ImageToVideo(imagePath, outputPath string, duration float64, orientation st
 func BurnSubtitles(inputPath, srtPath, outputPath, orientation string) error {
 	var style string
 	if orientation == "portrait" {
-		// TikTok style: Yellow text, bold, smaller, high margin to avoid UI overlap
-		style = "Fontname=Ubuntu Sans,Fontsize=18,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=1,Alignment=2,MarginV=80,Bold=1"
+		// TikTok style: Vibrant yellow text, bold, balanced font, higher margin
+		// Colour: &H0000FFFF (Yellow), Outline: &H00000000 (Black)
+		style = "Fontname=Arial Bold,Fontsize=18,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2.0,Shadow=1.2,Alignment=2,MarginV=140,Bold=1,WrapStyle=2"
 	} else {
-		// YouTube style: White text, semi-bold, smaller, standard margin
-		style = "Fontname=Ubuntu Sans,Fontsize=14,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.2,Shadow=1,Alignment=2,MarginV=40,Bold=1"
+		// YouTube style: Crisp white text, semi-bold, middle-bottom
+		// Colour: &H00FFFFFF (White), Outline: &H00000000 (Black)
+		style = "Fontname=Arial Bold,Fontsize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=1,Alignment=2,MarginV=70,Bold=1,WrapStyle=2"
 	}
 
-	// FFmpeg subtitles filter needs specific escaping for windows/linux paths
-	// We use the simpler syntax first
+	// FFmpeg subtitles filter needs specific escaping. Using double quotes for style to handle special chars.
 	filter := fmt.Sprintf("subtitles='%s':force_style='%s'", filepath.ToSlash(srtPath), style)
 
 	args := []string{

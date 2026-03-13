@@ -69,7 +69,7 @@ func (sh *SeriesHandler) GenerateSeries(c *gin.Context) {
 
 	// Default speaking speed
 	// Force speaking speed to -0.5 for FPT TTS (hard-coded)
-	req.SpeakingSpeed = -0.5
+	req.SpeakingSpeed = 0
 
 	// Slug content name
 	baseName := req.ContentName

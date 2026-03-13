@@ -20,6 +20,9 @@ type Config struct {
 	// Output directory for saved videos
 	OutputDir string
 
+	// Subtitles
+	EnableSubtitles bool
+
 	// API Keys Pool
 	TTSAPIKeys       []string
 	ElevenLabsAPIKey string
@@ -65,6 +68,8 @@ func LoadConfig() (*Config, error) {
 		TempDir:   getEnv("TEMP_DIR", "./temp"),
 		OutputDir: getEnv("OUTPUT_DIR", "../ai-videos"),
 		CacheDir:  getEnv("CACHE_DIR", "./cache"),
+
+		EnableSubtitles: getEnvAsBool("ENABLE_SUBTITLES", false),
 
 		// Parse API keys
 		TTSAPIKeys:       parseAPIKeys(getEnv("TTS_API_KEYS", "")),
@@ -151,6 +156,18 @@ func getEnvAsFloat(key string, defaultValue float64) float64 {
 		return defaultValue
 	}
 	value, err := strconv.ParseFloat(valueStr, 64)
+	if err != nil {
+		return defaultValue
+	}
+	return value
+}
+
+func getEnvAsBool(key string, defaultValue bool) bool {
+	valueStr := os.Getenv(key)
+	if valueStr == "" {
+		return defaultValue
+	}
+	value, err := strconv.ParseBool(valueStr)
 	if err != nil {
 		return defaultValue
 	}
