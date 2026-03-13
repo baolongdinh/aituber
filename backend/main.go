@@ -92,7 +92,7 @@ func main() {
 	)
 
 	// 5. Initialize handlers
-	videoHandler := handlers.NewVideoHandler(cfg)
+	videoHandler := handlers.NewVideoHandler(cfg, jobManager, workflowSvc, geminiService)
 	seriesHandler := handlers.NewSeriesHandler(cfg, jobManager, workflowSvc, geminiService)
 
 	// API routes

@@ -317,6 +317,12 @@ func MergeVideosWithTransition(inputFiles []string, outputFile string, transitio
 
 // CombineAudioVideo combines audio and video into final output
 func CombineAudioVideo(videoPath, audioPath, outputPath string) error {
+	// Lấy thời lượng chính xác của audio để cắt video
+	audioDuration, err := GetAudioDuration(audioPath)
+	if err != nil {
+		return fmt.Errorf("failed to get audio duration: %w", err)
+	}
+
 	args := []string{
 		"-i", videoPath,
 		"-i", audioPath,
@@ -325,7 +331,7 @@ func CombineAudioVideo(videoPath, audioPath, outputPath string) error {
 		"-b:a", "192k",
 		"-map", "0:v:0",
 		"-map", "1:a:0",
-		"-shortest",
+		"-t", fmt.Sprintf("%.3f", audioDuration), // Cắt chính xác theo milli-second
 		"-y", outputPath,
 	}
 
@@ -539,13 +545,12 @@ func ImageToVideo(imagePath, outputPath string, duration float64, orientation st
 func BurnSubtitles(inputPath, srtPath, outputPath, orientation string) error {
 	var style string
 	if orientation == "portrait" {
-		// TikTok style: Vibrant yellow text, bold, balanced font, higher margin
-		// Colour: &H0000FFFF (Yellow), Outline: &H00000000 (Black)
-		style = "Fontname=Arial Bold,Fontsize=18,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2.0,Shadow=1.2,Alignment=2,MarginV=140,Bold=1,WrapStyle=2"
+		// TikTok style: Vibrant yellow text, bold, slightly higher bottom position, auto-wrapping
+		// MarginV=280 to be above the post interaction bar but below center
+		style = "Fontname=Arial Bold,Fontsize=20,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2.0,Shadow=1.5,Alignment=2,MarginV=280,MarginL=60,MarginR=60,Bold=1,WrapStyle=0"
 	} else {
-		// YouTube style: Crisp white text, semi-bold, middle-bottom
-		// Colour: &H00FFFFFF (White), Outline: &H00000000 (Black)
-		style = "Fontname=Arial Bold,Fontsize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=1,Alignment=2,MarginV=70,Bold=1,WrapStyle=2"
+		// YouTube style: Crisp white text, semi-bold, bottom center, auto-wrapping
+		style = "Fontname=Arial Bold,Fontsize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=1,Alignment=2,MarginV=80,MarginL=100,MarginR=100,Bold=1,WrapStyle=0"
 	}
 
 	// FFmpeg subtitles filter needs specific escaping. Using double quotes for style to handle special chars.

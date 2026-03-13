@@ -116,7 +116,7 @@ const youtubeTips = [
   { icon: '🎯', title: 'SEO-friendly', desc: 'Hook + sections rõ ràng' },
 ]
 const tiktokTips = [
-  { icon: '⚡', title: '30–60 giây', desc: 'Nhanh, punch, gây nghiện' },
+  { icon: '⚡', title: '60–90 giây', desc: 'Nhanh, punch, gây nghiện' },
   { icon: '🔥', title: 'Hook 3 giây', desc: 'Câu đầu phải gây sốc ngay' },
   { icon: '🌊', title: 'Viral format', desc: 'Tò mò → Value → CTA' },
 ]

@@ -19,73 +19,19 @@ import (
 
 // VideoHandler handles video generation requests
 type VideoHandler struct {
-	cfg               *config.Config
-	jobManager        services.IJobManager
-	workflow          services.IVideoWorkflow
-	geminiSVC         services.IScriptGenerator
-	textProcessor     *services.TextProcessor
-	audioService      *services.AudioService
-	videoService      *services.VideoService
-	geminiService     *services.GeminiService
-	hfService         *services.HuggingFaceService
-	stockVideoService *services.StockVideoService
-	composerService   *services.ComposerService
+	cfg        *config.Config
+	jobManager services.IJobManager
+	workflow   services.IVideoWorkflow
+	geminiSVC  services.IScriptGenerator
 }
 
 // NewVideoHandler creates a new video handler
-func NewVideoHandler(cfg *config.Config) *VideoHandler {
-	// Create API key pools
-	ttsPool := utils.NewAPIKeyPool(cfg.TTSAPIKeys)
-
-	var videoPool *utils.APIKeyPool
-	if len(cfg.VideoAPIKeys) > 0 {
-		videoPool = utils.NewAPIKeyPool(cfg.VideoAPIKeys)
-	} else {
-		videoPool = utils.NewAPIKeyPool([]string{"placeholder"})
-	}
-
-	// Initialize services
-	textProcessor := services.NewTextProcessor(cfg.AudioChunkSize, cfg.VideoSegmentDuration)
-
-	audioService := services.NewAudioService(
-		ttsPool,
-		cfg.ElevenLabsAPIKey,
-		cfg.TempDir,
-		cfg.AudioBitrate,
-		cfg.AudioSampleRate,
-		cfg.AudioCrossfadeDuration,
-	)
-
-	videoService := services.NewVideoService(
-		videoPool,
-		cfg.TempDir,
-		cfg.VideoBitrate,
-		cfg.VideoResolution,
-		cfg.VideoFPS,
-		cfg.VideoTransitionDuration,
-	)
-
-	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
-	hfService := services.NewHuggingFaceService(cfg.HuggingFaceTokens)
-	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService, cfg.LocalHubURL, cfg.RemoteHubURL, cfg.RemoteHubToken)
-	composerService := services.NewComposerService(cfg.VideoBitrate)
-
-	// Create job manager and workflow
-	jobManager := services.NewJobManager()
-	workflow := services.NewVideoWorkflowService(cfg, jobManager, textProcessor, audioService, videoService, stockVideoService, composerService, geminiService)
-
+func NewVideoHandler(cfg *config.Config, jobManager services.IJobManager, workflow services.IVideoWorkflow, gemini services.IScriptGenerator) *VideoHandler {
 	return &VideoHandler{
-		cfg:               cfg,
-		jobManager:        jobManager,
-		workflow:          workflow,
-		geminiSVC:         geminiService,
-		textProcessor:     textProcessor,
-		audioService:      audioService,
-		videoService:      videoService,
-		geminiService:     geminiService,
-		hfService:         hfService,
-		stockVideoService: stockVideoService,
-		composerService:   composerService,
+		cfg:        cfg,
+		jobManager: jobManager,
+		workflow:   workflow,
+		geminiSVC:  gemini,
 	}
 }
 
