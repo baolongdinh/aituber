@@ -1084,7 +1084,7 @@ func (sv *StockVideoService) generateImageRemoteHub(ctx context.Context, prompt 
 	// Polling logic
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	timeout := time.After(2 * time.Hour) // User requested 2 hours timeout
+	timeout := time.After(6 * time.Hour) // User requested 6 hours timeout
 	pollCount := 0
 
 	for {
