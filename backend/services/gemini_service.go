@@ -696,22 +696,43 @@ func (gs *GeminiService) callGeminiRaw(prompt string, temperature float64, maxTo
 	return "", fmt.Errorf("callGeminiRaw failed after %d retries: %w", maxRetries, lastErr)
 }
 
-// extractJSON finds the maximum possible JSON block [...] or {...} in a string.
-// This is more robust than non-greedy regex as it handles nested brackets correctly.
+// extractJSON finds the first complete JSON block [...] or {...} in a string.
+// It uses bracket balancing to support nested structures without being fooled by
+// additional text or multiple JSON blocks.
 func (gs *GeminiService) extractJSON(text string) string {
-	// Look for array
-	startIdx := strings.Index(text, "[")
-	endIdx := strings.LastIndex(text, "]")
-	if startIdx != -1 && endIdx != -1 && endIdx > startIdx {
-		return text[startIdx : endIdx+1]
+	startArray := strings.Index(text, "[")
+	startObj := strings.Index(text, "{")
+
+	start := -1
+	var open, close byte
+
+	if startArray != -1 && (startObj == -1 || startArray < startObj) {
+		start = startArray
+		open = '['
+		close = ']'
+	} else if startObj != -1 {
+		start = startObj
+		open = '{'
+		close = '}'
 	}
 
-	// Look for object
-	startIdx = strings.Index(text, "{")
-	endIdx = strings.LastIndex(text, "}")
-	if startIdx != -1 && endIdx != -1 && endIdx > startIdx {
-		return text[startIdx : endIdx+1]
+	if start == -1 {
+		return text
 	}
 
-	return text
+	count := 0
+	for i := start; i < len(text); i++ {
+		if text[i] == open {
+			count++
+		} else if text[i] == close {
+			count--
+			if count == 0 {
+				return text[start : i+1]
+			}
+		}
+	}
+
+	// If we couldn't find a matching closing bracket,
+	// return from start to end as a fallback.
+	return text[start:]
 }

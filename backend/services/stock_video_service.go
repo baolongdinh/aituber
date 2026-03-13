@@ -2,6 +2,7 @@ package services
 
 import (
 	"aituber/utils"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -25,11 +26,12 @@ type StockVideoService struct {
 	cacheDir      string
 	geminiService *GeminiService      // AI image fallback tier 4
 	hfService     *HuggingFaceService // AI image fallback tier 3 (preferred, cheaper)
+	localHubURL   string              // Local Hub Tier (sequential CPU generation)
 	jobMediaTrack sync.Map            // Tracks used links/keywords per jobID to guarantee uniqueness
 }
 
 // NewStockVideoService creates a new stock video service
-func NewStockVideoService(apiKey, tempDir, cacheDir string, geminiSvc *GeminiService, hfSvc *HuggingFaceService) *StockVideoService {
+func NewStockVideoService(apiKey, tempDir, cacheDir string, geminiSvc *GeminiService, hfSvc *HuggingFaceService, localHubURL string) *StockVideoService {
 	return &StockVideoService{
 		apiKey: apiKey,
 		httpClient: &http.Client{
@@ -39,6 +41,7 @@ func NewStockVideoService(apiKey, tempDir, cacheDir string, geminiSvc *GeminiSer
 		cacheDir:      cacheDir,
 		geminiService: geminiSvc,
 		hfService:     hfSvc,
+		localHubURL:   localHubURL,
 	}
 }
 
@@ -163,6 +166,24 @@ func (sv *StockVideoService) PrepareSegmentVideo(ctx context.Context, keywords s
 		if sv.cacheDir != "" && visualDesc != "" {
 			cachePath := filepath.Join(sv.cacheDir, cacheKey+".mp4")
 			_ = utils.CopyFile(srcPath, cachePath)
+		}
+	}
+
+	// 1. TIER 0: Local AI Hub (Highest Priority if available)
+	if sv.localHubURL != "" && visualDesc != "" {
+		localVideoPath := filepath.Join(segDir, "local_hub_output.mp4")
+		fmt.Printf("[SegVideo %d] Attempting Local Hub (Priority 0) with prompt: %q\n", segIndex, visualDesc)
+		if imgBytes, err := sv.generateImageLocalHub(ctx, visualDesc, orientation); err == nil {
+			imgPath := filepath.Join(segDir, "local_hub.png")
+			if os.WriteFile(imgPath, imgBytes, 0644) == nil {
+				if err := utils.ImageToVideo(imgPath, localVideoPath, audioDuration+0.4, orientation); err == nil {
+					fmt.Printf("[SegVideo %d] Local Hub generation SUCCEEDED!\n", segIndex)
+					saveToCache(localVideoPath)
+					return localVideoPath, nil
+				}
+			}
+		} else {
+			fmt.Printf("[SegVideo %d] Local Hub failed/unavailable: %v. Moving to T2V Tier...\n", segIndex, err)
 		}
 	}
 
@@ -368,6 +389,76 @@ func (sv *StockVideoService) processAndTrimStockVideo(downloadedPaths []string, 
 
 	fmt.Printf("[SegVideo %d] Stock SUCCESS (Source: %s) -> %s\n", segIndex, keywords, trimmedPath)
 	return trimmedPath, nil
+}
+
+// generateImageLocalHub calls the local Python hub service to generate an image
+func (sv *StockVideoService) generateImageLocalHub(ctx context.Context, prompt string, orientation string) ([]byte, error) {
+	// 1. Request generation
+	genURL := fmt.Sprintf("%s/generate", sv.localHubURL)
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"prompt":              prompt,
+		"num_inference_steps": 4, // Schnell optimized
+	})
+
+	resp, err := sv.httpClient.Post(genURL, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("local hub connection failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("local hub returned status %d", resp.StatusCode)
+	}
+
+	var genResult struct {
+		TaskID string `json:"task_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&genResult); err != nil {
+		return nil, err
+	}
+
+	// 2. Poll for completion (Max 5 minutes)
+	statusURL := fmt.Sprintf("%s/status/%s", sv.localHubURL, genResult.TaskID)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	timeout := time.After(5 * time.Minute)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timeout:
+			return nil, fmt.Errorf("local hub generation timed out")
+		case <-ticker.C:
+			sResp, err := sv.httpClient.Get(statusURL)
+			if err != nil {
+				continue
+			}
+			var status struct {
+				Status    string `json:"status"`
+				FileReady bool   `json:"file_ready"`
+				URL       string `json:"url"`
+			}
+			json.NewDecoder(sResp.Body).Decode(&status)
+			sResp.Body.Close()
+
+			if status.Status == "failed" {
+				return nil, fmt.Errorf("local hub generation failed")
+			}
+
+			if status.FileReady {
+				// 3. Download the final image
+				imgURL := fmt.Sprintf("%s%s", sv.localHubURL, status.URL)
+				imgResp, err := sv.httpClient.Get(imgURL)
+				if err != nil {
+					return nil, err
+				}
+				defer imgResp.Body.Close()
+				return io.ReadAll(imgResp.Body)
+			}
+		}
+	}
 }
 
 func (sv *StockVideoService) getCacheHash(text string) string {

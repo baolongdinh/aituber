@@ -25,6 +25,7 @@ type Config struct {
 	ElevenLabsAPIKey string
 	VideoAPIKeys     []string
 	GeminiAPIKeys    []string
+	LocalHubURL      string
 
 	// Processing Settings
 	MaxTextLength        int
@@ -68,6 +69,7 @@ func LoadConfig() (*Config, error) {
 		ElevenLabsAPIKey: getEnv("ELEVENLABS_API_KEY", ""),
 		VideoAPIKeys:     parseAPIKeys(getEnv("VIDEO_API_KEYS", "")),
 		GeminiAPIKeys:    parseAPIKeys(getEnv("GEMINI_API_KEYS", "")),
+		LocalHubURL:      getEnv("LOCAL_HUB_URL", "http://localhost:5000"),
 
 		// Processing settings
 		MaxTextLength:        getEnvAsInt("MAX_TEXT_LENGTH", 50000),

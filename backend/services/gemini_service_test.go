@@ -37,6 +37,11 @@ func TestExtractJSON(t *testing.T) {
 			input:    " \n  \r\n [  \n {\"id\": 1 } \n ] \n ",
 			expected: "[  \n {\"id\": 1 } \n ]",
 		},
+		{
+			name:     "Nested structures (Array with inner arrays - real world case)",
+			input:    "Outline generated: [\n  {\n    \"part_number\": 1,\n    \"key_points\": [\"point 1\", \"point 2\"]\n  }\n]",
+			expected: "[\n  {\n    \"part_number\": 1,\n    \"key_points\": [\"point 1\", \"point 2\"]\n  }\n]",
+		},
 	}
 
 	for _, tt := range tests {
