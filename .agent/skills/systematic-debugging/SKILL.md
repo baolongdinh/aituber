@@ -1,9 +1,7 @@
 ---
 name: systematic-debugging
-description: 4-phase systematic debugging methodology with root cause analysis and evidence-based verification.
-category: tools
-version: 4.1.0-fractal
-layer: master-skill
+description: 4-phase systematic debugging methodology with root cause analysis and evidence-based verification. Use when debugging complex issues.
+allowed-tools: Read, Glob, Grep
 ---
 
 # Systematic Debugging
@@ -15,10 +13,97 @@ This skill provides a structured approach to debugging that prevents random gues
 
 ## 4-Phase Debugging Process
 
-## 🧠 Knowledge Modules (Fractal Skills)
+### Phase 1: Reproduce
+Before fixing, reliably reproduce the issue.
 
-### 1. [Phase 1: Reproduce](./sub-skills/phase-1-reproduce.md)
-### 2. [Phase 2: Isolate](./sub-skills/phase-2-isolate.md)
-### 3. [Phase 3: Understand](./sub-skills/phase-3-understand.md)
-### 4. [The 5 Whys](./sub-skills/the-5-whys.md)
-### 5. [Phase 4: Fix & Verify](./sub-skills/phase-4-fix-verify.md)
+```markdown
+## Reproduction Steps
+1. [Exact step to reproduce]
+2. [Next step]
+3. [Expected vs actual result]
+
+## Reproduction Rate
+- [ ] Always (100%)
+- [ ] Often (50-90%)
+- [ ] Sometimes (10-50%)
+- [ ] Rare (<10%)
+```
+
+### Phase 2: Isolate
+Narrow down the source.
+
+```markdown
+## Isolation Questions
+- When did this start happening?
+- What changed recently?
+- Does it happen in all environments?
+- Can we reproduce with minimal code?
+- What's the smallest change that triggers it?
+```
+
+### Phase 3: Understand
+Find the root cause, not just symptoms.
+
+```markdown
+## Root Cause Analysis
+### The 5 Whys
+1. Why: [First observation]
+2. Why: [Deeper reason]
+3. Why: [Still deeper]
+4. Why: [Getting closer]
+5. Why: [Root cause]
+```
+
+### Phase 4: Fix & Verify
+Fix and verify it's truly fixed.
+
+```markdown
+## Fix Verification
+- [ ] Bug no longer reproduces
+- [ ] Related functionality still works
+- [ ] No new issues introduced
+- [ ] Test added to prevent regression
+```
+
+## Debugging Checklist
+
+```markdown
+## Before Starting
+- [ ] Can reproduce consistently
+- [ ] Have minimal reproduction case
+- [ ] Understand expected behavior
+
+## During Investigation
+- [ ] Check recent changes (git log)
+- [ ] Check logs for errors
+- [ ] Add logging if needed
+- [ ] Use debugger/breakpoints
+
+## After Fix
+- [ ] Root cause documented
+- [ ] Fix verified
+- [ ] Regression test added
+- [ ] Similar code checked
+```
+
+## Common Debugging Commands
+
+```bash
+# Recent changes
+git log --oneline -20
+git diff HEAD~5
+
+# Search for pattern
+grep -r "errorPattern" --include="*.ts"
+
+# Check logs
+pm2 logs app-name --err --lines 100
+```
+
+## Anti-Patterns
+
+❌ **Random changes** - "Maybe if I change this..."
+❌ **Ignoring evidence** - "That can't be the cause"
+❌ **Assuming** - "It must be X" without proof
+❌ **Not reproducing first** - Fixing blindly
+❌ **Stopping at symptoms** - Not finding root cause

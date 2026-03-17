@@ -1,0 +1,35 @@
+package handler
+
+import (
+    "net/http"
+    "strconv"
+    "github.com/gin-gonic/gin"
+    "{module}/internal/dto"
+    "{module}/internal/service"
+    "{module}/pkg/response"
+    "{module}/pkg/apperror"
+)
+
+type {domain_title}Handler struct {{
+    svc service.{domain_title}Service
+}}
+
+func New{domain_title}Handler(svc service.{domain_title}Service) *{domain_title}Handler {{
+    return &{domain_title}Handler{{svc: svc}}
+}}
+
+func (h *{domain_title}Handler) GetByID(c *gin.Context) {{
+    id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+    if err != nil {{
+        response.Fail(c, http.StatusBadRequest, apperror.BadRequest("invalid id"))
+        return
+    }}
+
+    res, appErr := h.svc.GetByID(c.Request.Context(), uint(id))
+    if appErr != nil {{
+        response.Fail(c, appErr.HTTPStatus, appErr)
+        return
+    }}
+
+    response.OK(c, res)
+}}

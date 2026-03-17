@@ -1,5 +1,5 @@
 ---
-description: Muốn tạo tính năng mới từ A-Z? Dùng cái này.
+description: Create new application command. Triggers App Builder skill and starts interactive dialogue with user.
 ---
 
 # /create - Create Application

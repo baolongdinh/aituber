@@ -1,0 +1,23 @@
+package repository
+
+import (
+    "context"
+    "{module}/internal/model"
+    "gorm.io/gorm"
+)
+
+type {domain_lower}RepositoryImpl struct {{
+    db *gorm.DB
+}}
+
+func New{domain_title}Repository(db *gorm.DB) {domain_title}Repository {{
+    return &{domain_lower}RepositoryImpl{{db: db}}
+}}
+
+func (r *{domain_lower}RepositoryImpl) FindByID(ctx context.Context, id uint) (*model.{domain_title}, error) {{
+    var entity model.{domain_title}
+    if err := r.db.WithContext(ctx).First(&entity, id).Error; err != nil {{
+        return nil, err
+    }}
+    return &entity, nil
+}}

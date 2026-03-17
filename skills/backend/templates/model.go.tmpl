@@ -1,0 +1,13 @@
+package model
+
+import "time"
+
+type {domain_title} struct {{
+    BaseModel
+    Name        string `gorm:"type:varchar(255);not null"`
+    Description string `gorm:"type:text"`
+}}
+
+func ({domain_title}) TableName() string {{
+    return "{domain_lower}s"
+}}

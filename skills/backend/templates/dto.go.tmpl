@@ -1,0 +1,22 @@
+package dto
+
+import (
+    "time"
+    "{module}/internal/model"
+)
+
+type {domain_title}Response struct {{
+    ID          uint      `json:"id"`
+    Name        string    `json:"name"`
+    Description string    `json:"description"`
+    CreatedAt   time.Time `json:"created_at"`
+}}
+
+func To{domain_title}Response(m *model.{domain_title}) *{domain_title}Response {{
+    return &{domain_title}Response{{
+        ID:          m.ID,
+        Name:        m.Name,
+        Description: m.Description,
+        CreatedAt:   m.CreatedAt,
+    }}
+}}

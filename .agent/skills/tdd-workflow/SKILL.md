@@ -1,9 +1,7 @@
 ---
 name: tdd-workflow
 description: Test-Driven Development workflow principles. RED-GREEN-REFACTOR cycle.
-category: security
-version: 4.1.0-fractal
-layer: master-skill
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
 # TDD Workflow
@@ -36,12 +34,116 @@ layer: master-skill
 
 ## 3. RED Phase Principles
 
-## 🧠 Knowledge Modules (Fractal Skills)
+### What to Write
 
-### 1. [What to Write](./sub-skills/what-to-write.md)
-### 2. [RED Phase Rules](./sub-skills/red-phase-rules.md)
-### 3. [Minimum Code](./sub-skills/minimum-code.md)
-### 4. [GREEN Phase Rules](./sub-skills/green-phase-rules.md)
-### 5. [What to Improve](./sub-skills/what-to-improve.md)
-### 6. [REFACTOR Rules](./sub-skills/refactor-rules.md)
-### 7. [Multi-Agent Pattern](./sub-skills/multi-agent-pattern.md)
+| Focus | Example |
+|-------|---------|
+| Behavior | "should add two numbers" |
+| Edge cases | "should handle empty input" |
+| Error states | "should throw for invalid data" |
+
+### RED Phase Rules
+
+- Test must fail first
+- Test name describes expected behavior
+- One assertion per test (ideally)
+
+---
+
+## 4. GREEN Phase Principles
+
+### Minimum Code
+
+| Principle | Meaning |
+|-----------|---------|
+| **YAGNI** | You Aren't Gonna Need It |
+| **Simplest thing** | Write the minimum to pass |
+| **No optimization** | Just make it work |
+
+### GREEN Phase Rules
+
+- Don't write unneeded code
+- Don't optimize yet
+- Pass the test, nothing more
+
+---
+
+## 5. REFACTOR Phase Principles
+
+### What to Improve
+
+| Area | Action |
+|------|--------|
+| Duplication | Extract common code |
+| Naming | Make intent clear |
+| Structure | Improve organization |
+| Complexity | Simplify logic |
+
+### REFACTOR Rules
+
+- All tests must stay green
+- Small incremental changes
+- Commit after each refactor
+
+---
+
+## 6. AAA Pattern
+
+Every test follows:
+
+| Step | Purpose |
+|------|---------|
+| **Arrange** | Set up test data |
+| **Act** | Execute code under test |
+| **Assert** | Verify expected outcome |
+
+---
+
+## 7. When to Use TDD
+
+| Scenario | TDD Value |
+|----------|-----------|
+| New feature | High |
+| Bug fix | High (write test first) |
+| Complex logic | High |
+| Exploratory | Low (spike, then TDD) |
+| UI layout | Low |
+
+---
+
+## 8. Test Prioritization
+
+| Priority | Test Type |
+|----------|-----------|
+| 1 | Happy path |
+| 2 | Error cases |
+| 3 | Edge cases |
+| 4 | Performance |
+
+---
+
+## 9. Anti-Patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Skip the RED phase | Watch test fail first |
+| Write tests after | Write tests before |
+| Over-engineer initial | Keep it simple |
+| Multiple asserts | One behavior per test |
+| Test implementation | Test behavior |
+
+---
+
+## 10. AI-Augmented TDD
+
+### Multi-Agent Pattern
+
+| Agent | Role |
+|-------|------|
+| Agent A | Write failing tests (RED) |
+| Agent B | Implement to pass (GREEN) |
+| Agent C | Optimize (REFACTOR) |
+
+---
+
+> **Remember:** The test is the specification. If you can't write a test, you don't understand the requirement.

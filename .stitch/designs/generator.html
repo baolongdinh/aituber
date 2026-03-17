@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AITuber Universal Generator</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#40baf7",
+                        "accent": "#6366f1",
+                        "background-light": "#f5f7f8",
+                        "background-dark": "#0a0a0c",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.5rem",
+                        "lg": "1rem",
+                        "xl": "1.5rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .custom-gradient-btn {
+            background: linear-gradient(135deg, #40baf7 0%, #6366f1 100%);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<!-- Top Navigation -->
+<header class="flex items-center justify-between border-b border-white/10 px-6 py-4 lg:px-20 bg-background-dark/50 backdrop-blur-md sticky top-0 z-50">
+<div class="flex items-center gap-3">
+<div class="p-2 bg-primary/20 rounded-lg text-primary">
+<span class="material-symbols-outlined text-2xl">rocket_launch</span>
+</div>
+<h2 class="text-xl font-bold tracking-tight">AITuber <span class="text-primary">Studio</span></h2>
+</div>
+<nav class="hidden md:flex items-center gap-8">
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Dashboard</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Gallery</a>
+<a class="text-sm font-medium hover:text-primary transition-colors text-primary border-b-2 border-primary pb-1" href="#">Generator</a>
+<a class="text-sm font-medium hover:text-primary transition-colors" href="#">Assets</a>
+</nav>
+<div class="flex items-center gap-4">
+<button class="p-2 text-slate-400 hover:text-white transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="h-10 w-10 rounded-full border border-white/20 bg-slate-800" data-alt="User profile avatar with neon accent"></div>
+</div>
+</header>
+<main class="flex-1 px-6 py-8 lg:px-20 max-w-7xl mx-auto w-full">
+<!-- Breadcrumbs -->
+<nav class="flex items-center gap-2 text-sm text-slate-500 mb-6">
+<a class="hover:text-primary transition-colors" href="#">Home</a>
+<span class="material-symbols-outlined text-xs">chevron_right</span>
+<span class="text-slate-200">Generator</span>
+<span class="material-symbols-outlined text-xs">chevron_right</span>
+<span class="text-primary font-medium">Universal Creator</span>
+</nav>
+<div class="flex flex-col lg:flex-row gap-8 items-start">
+<!-- Main Configuration Area -->
+<div class="flex-1 w-full">
+<div class="mb-8">
+<h1 class="text-4xl font-black mb-2">Create New Content</h1>
+<p class="text-slate-400 text-lg">Harness multi-model AI to generate high-quality automated content.</p>
+</div>
+<div class="glass-card rounded-xl p-6 lg:p-8 space-y-8">
+<!-- Mode Toggle -->
+<div class="bg-white/5 p-1.5 rounded-xl flex max-w-sm">
+<button class="flex-1 py-2.5 px-4 rounded-lg bg-primary text-background-dark font-bold text-sm transition-all shadow-lg shadow-primary/20">
+                                Single Video
+                            </button>
+<button class="flex-1 py-2.5 px-4 rounded-lg text-slate-400 font-medium text-sm hover:text-white transition-all">
+                                Series Video
+                            </button>
+</div>
+<!-- Basic Info Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="flex flex-col gap-2">
+<label class="text-sm font-semibold text-slate-300">Content Name</label>
+<input class="bg-white/5 border-white/10 rounded-lg py-3 px-4 focus:ring-primary focus:border-primary text-white placeholder:text-slate-500 transition-all" placeholder="Project Alpha - Cyberpunk Tour" type="text"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-sm font-semibold text-slate-300">Target Platform</label>
+<select class="bg-white/5 border-white/10 rounded-lg py-3 px-4 focus:ring-primary focus:border-primary text-white transition-all">
+<option value="tiktok">TikTok (9:16)</option>
+<option value="youtube">YouTube (16:9)</option>
+<option value="shorts">YouTube Shorts (9:16)</option>
+<option value="instagram">Instagram Reels (9:16)</option>
+</select>
+</div>
+</div>
+<!-- Topic Area -->
+<div class="flex flex-col gap-2">
+<label class="text-sm font-semibold text-slate-300">Topic &amp; Script Context</label>
+<textarea class="bg-white/5 border-white/10 rounded-lg py-3 px-4 focus:ring-primary focus:border-primary text-white placeholder:text-slate-500 transition-all" placeholder="Explain the mystery of the Fermi Paradox in a dark, cinematic style with a focus on deep-sea metaphors..." rows="4"></textarea>
+</div>
+<!-- Series Settings (Subtle breakdown) -->
+<div class="pt-6 border-t border-white/10">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-lg font-bold flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">layers</span>
+                                    Series Configuration
+                                </h3>
+<span class="bg-primary/20 text-primary text-xs px-2 py-1 rounded-full uppercase tracking-wider font-bold">Enabled</span>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<label class="text-sm font-medium text-slate-400">Number of Parts</label>
+<span class="text-primary font-bold">05 Parts</span>
+</div>
+<input class="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary" max="10" min="1" type="range" value="5"/>
+</div>
+</div>
+<!-- AI Model Selection Grid -->
+<div class="pt-6 border-t border-white/10">
+<h3 class="text-lg font-bold mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-accent">bolt</span>
+                                AI Model Pipeline
+                            </h3>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-widest text-slate-500">Voice Avatar</label>
+<div class="relative group">
+<select class="w-full bg-white/5 border-white/10 rounded-lg py-3 px-4 focus:ring-accent focus:border-accent text-white appearance-none">
+<option>Bella (Narrative)</option>
+<option>Antoni (Expressive)</option>
+<option>Marcus (Deep/Epic)</option>
+<option>Sarah (Soft/Calm)</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">expand_more</span>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-widest text-slate-500">TTS Engine</label>
+<div class="relative group">
+<select class="w-full bg-white/5 border-white/10 rounded-lg py-3 px-4 focus:ring-accent focus:border-accent text-white appearance-none">
+<option>ElevenLabs v2</option>
+<option>OpenAI TTS-1</option>
+<option>Google Neural2</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">expand_more</span>
+</div>
+</div>
+<div class="space-y-2">
+<label class="text-xs font-bold uppercase tracking-widest text-slate-500">Visuals (T2V)</label>
+<div class="relative group">
+<select class="w-full bg-white/5 border-white/10 rounded-lg py-3 px-4 focus:ring-accent focus:border-accent text-white appearance-none">
+<option>FLUX-1.dev</option>
+<option>Pexels Real-time</option>
+<option>Runway Gen-2</option>
+<option>Sora v0.1 (Waitlist)</option>
+</select>
+<span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">expand_more</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Action Footer -->
+<div class="flex flex-col sm:flex-row items-center justify-between pt-8 gap-4">
+<a class="text-slate-400 hover:text-white font-medium transition-colors" href="#">Discard Draft</a>
+<div class="flex items-center gap-4 w-full sm:w-auto">
+<button class="flex-1 sm:flex-none custom-gradient-btn text-white font-bold py-3 px-10 rounded-lg shadow-[0_0_20px_rgba(64,186,247,0.3)] hover:shadow-[0_0_30px_rgba(64,186,247,0.5)] transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">auto_awesome</span>
+                                    Start Generation
+                                </button>
+</div>
+</div>
+</div>
+</div>
+<!-- Floating Sidebar Summary -->
+<aside class="w-full lg:w-80 shrink-0 sticky top-28">
+<div class="glass-card rounded-xl p-6 border-primary/20 bg-primary/5">
+<h4 class="text-sm font-bold uppercase tracking-widest text-primary mb-6">Generation Summary</h4>
+<div class="space-y-6">
+<div class="flex gap-4">
+<div class="h-10 w-10 rounded-lg bg-white/5 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">movie</span>
+</div>
+<div>
+<p class="text-xs text-slate-400 font-medium">ESTIMATED DURATION</p>
+<p class="text-sm font-bold text-white">~ 12 Minutes</p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="h-10 w-10 rounded-lg bg-white/5 flex items-center justify-center text-accent">
+<span class="material-symbols-outlined">monetization_on</span>
+</div>
+<div>
+<p class="text-xs text-slate-400 font-medium">CREDITS REQUIRED</p>
+<p class="text-sm font-bold text-white">45 Credits</p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="h-10 w-10 rounded-lg bg-white/5 flex items-center justify-center text-emerald-400">
+<span class="material-symbols-outlined">high_quality</span>
+</div>
+<div>
+<p class="text-xs text-slate-400 font-medium">QUALITY</p>
+<p class="text-sm font-bold text-white">4K UHD Master</p>
+</div>
+</div>
+<div class="pt-6 border-t border-white/10 mt-6">
+<div class="flex items-center gap-2 mb-4">
+<div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+<span class="text-xs font-medium text-slate-300">GPU Clusters Online</span>
+</div>
+<div class="bg-background-dark/50 rounded-lg p-4 text-xs text-slate-400 leading-relaxed italic">
+                                    "Your project will be queued immediately and processed across 4 cloud instances."
+                                </div>
+</div>
+</div>
+</div>
+<!-- Promo/Tip card -->
+<div class="mt-4 p-4 rounded-xl border border-white/5 flex items-center gap-4 bg-white/5">
+<span class="material-symbols-outlined text-primary">lightbulb</span>
+<p class="text-xs text-slate-400">Pro tip: Use specific keywords like <span class="text-white">"cinematic lighting"</span> for better visual results.</p>
+</div>
+</aside>
+</div>
+</main>
+<!-- Footer -->
+<footer class="mt-auto px-6 py-8 lg:px-20 border-t border-white/5 text-slate-500 text-xs flex flex-col md:flex-row justify-between items-center gap-4">
+<p>© 2024 AITuber Technologies. All rights reserved.</p>
+<div class="flex gap-6">
+<a class="hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="hover:text-primary transition-colors" href="#">API Docs</a>
+</div>
+</footer>
+</div>
+</body></html>

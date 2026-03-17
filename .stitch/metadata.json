@@ -1,0 +1,38 @@
+{
+    "name": "projects/2317677714841108790",
+    "projectId": "2317677714841108790",
+    "title": "AITuber Redesign",
+    "visibility": "PRIVATE",
+    "projectType": "PROJECT_DESIGN",
+    "origin": "STITCH",
+    "deviceType": "DESKTOP",
+    "screens": {
+        "index": {
+            "id": "2428ed9f0f4c47378371d4a69666b64d",
+            "sourceScreen": "projects/2317677714841108790/screens/2428ed9f0f4c47378371d4a69666b64d",
+            "x": 0,
+            "y": 0,
+            "width": 2560,
+            "height": 2760,
+            "title": "AITuber Creator Dashboard"
+        },
+        "generator": {
+            "id": "25fb7410184549858524cfe4461a13da",
+            "sourceScreen": "projects/2317677714841108790/screens/25fb7410184549858524cfe4461a13da",
+            "x": 2600,
+            "y": 0,
+            "width": 2560,
+            "height": 2496,
+            "title": "AITuber Universal Generator"
+        },
+        "job-detail": {
+            "id": "1a14c5bccf624581a98c6219145db1f0",
+            "sourceScreen": "projects/2317677714841108790/screens/1a14c5bccf624581a98c6219145db1f0",
+            "x": 5200,
+            "y": 0,
+            "width": 2560,
+            "height": 2048,
+            "title": "AITuber Job Progress & Result View"
+        }
+    }
+}

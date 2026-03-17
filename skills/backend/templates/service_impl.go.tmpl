@@ -1,0 +1,24 @@
+package service
+
+import (
+    "context"
+    "{module}/internal/dto"
+    "{module}/internal/repository"
+    "{module}/pkg/apperror"
+)
+
+type {domain_lower}ServiceImpl struct {{
+    repo repository.{domain_title}Repository
+}}
+
+func New{domain_title}Service(repo repository.{domain_title}Repository) {domain_title}Service {{
+    return &{domain_lower}ServiceImpl{{repo: repo}}
+}}
+
+func (s *{domain_lower}ServiceImpl) GetByID(ctx context.Context, id uint) (*dto.{domain_title}Response, *apperror.AppError) {{
+    entity, err := s.repo.FindByID(ctx, id)
+    if err != nil {{
+        return nil, apperror.NotFound("{domain_lower} not found")
+    }}
+    return dto.To{domain_title}Response(entity), nil
+}}

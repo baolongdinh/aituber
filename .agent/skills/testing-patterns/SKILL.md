@@ -1,9 +1,7 @@
 ---
 name: testing-patterns
 description: Testing patterns and principles. Unit, integration, mocking strategies.
-category: security
-version: 4.1.0-fractal
-layer: master-skill
+allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
 # Testing Patterns
@@ -39,16 +37,142 @@ layer: master-skill
 
 ## 3. Test Type Selection
 
-## 🧠 Knowledge Modules (Fractal Skills)
+### When to Use Each
 
-### 1. [When to Use Each](./sub-skills/when-to-use-each.md)
-### 2. [Good Unit Tests](./sub-skills/good-unit-tests.md)
-### 3. [What to Unit Test](./sub-skills/what-to-unit-test.md)
-### 4. [What to Test](./sub-skills/what-to-test.md)
-### 5. [Setup/Teardown](./sub-skills/setupteardown.md)
-### 6. [When to Mock](./sub-skills/when-to-mock.md)
-### 7. [Mock Types](./sub-skills/mock-types.md)
-### 8. [Naming](./sub-skills/naming.md)
-### 9. [Grouping](./sub-skills/grouping.md)
-### 10. [Strategies](./sub-skills/strategies.md)
-### 11. [Principles](./sub-skills/principles.md)
+| Type | Best For | Speed |
+|------|----------|-------|
+| **Unit** | Pure functions, logic | Fast (<50ms) |
+| **Integration** | API, DB, services | Medium |
+| **E2E** | Critical user flows | Slow |
+
+---
+
+## 4. Unit Test Principles
+
+### Good Unit Tests
+
+| Principle | Meaning |
+|-----------|---------|
+| Fast | < 100ms each |
+| Isolated | No external deps |
+| Repeatable | Same result always |
+| Self-checking | No manual verification |
+| Timely | Written with code |
+
+### What to Unit Test
+
+| Test | Don't Test |
+|------|------------|
+| Business logic | Framework code |
+| Edge cases | Third-party libs |
+| Error handling | Simple getters |
+
+---
+
+## 5. Integration Test Principles
+
+### What to Test
+
+| Area | Focus |
+|------|-------|
+| API endpoints | Request/response |
+| Database | Queries, transactions |
+| External services | Contracts |
+
+### Setup/Teardown
+
+| Phase | Action |
+|-------|--------|
+| Before All | Connect resources |
+| Before Each | Reset state |
+| After Each | Clean up |
+| After All | Disconnect |
+
+---
+
+## 6. Mocking Principles
+
+### When to Mock
+
+| Mock | Don't Mock |
+|------|------------|
+| External APIs | The code under test |
+| Database (unit) | Simple dependencies |
+| Time/random | Pure functions |
+| Network | In-memory stores |
+
+### Mock Types
+
+| Type | Use |
+|------|-----|
+| Stub | Return fixed values |
+| Spy | Track calls |
+| Mock | Set expectations |
+| Fake | Simplified implementation |
+
+---
+
+## 7. Test Organization
+
+### Naming
+
+| Pattern | Example |
+|---------|---------|
+| Should behavior | "should return error when..." |
+| When condition | "when user not found..." |
+| Given-when-then | "given X, when Y, then Z" |
+
+### Grouping
+
+| Level | Use |
+|-------|-----|
+| describe | Group related tests |
+| it/test | Individual case |
+| beforeEach | Common setup |
+
+---
+
+## 8. Test Data
+
+### Strategies
+
+| Approach | Use |
+|----------|-----|
+| Factories | Generate test data |
+| Fixtures | Predefined datasets |
+| Builders | Fluent object creation |
+
+### Principles
+
+- Use realistic data
+- Randomize non-essential values (faker)
+- Share common fixtures
+- Keep data minimal
+
+---
+
+## 9. Best Practices
+
+| Practice | Why |
+|----------|-----|
+| One assert per test | Clear failure reason |
+| Independent tests | No order dependency |
+| Fast tests | Run frequently |
+| Descriptive names | Self-documenting |
+| Clean up | Avoid side effects |
+
+---
+
+## 10. Anti-Patterns
+
+| ❌ Don't | ✅ Do |
+|----------|-------|
+| Test implementation | Test behavior |
+| Duplicate test code | Use factories |
+| Complex test setup | Simplify or split |
+| Ignore flaky tests | Fix root cause |
+| Skip cleanup | Reset state |
+
+---
+
+> **Remember:** Tests are documentation. If someone can't understand what the code does from the tests, rewrite them.

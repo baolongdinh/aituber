@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AITuber Creator Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#40baf7",
+                        "accent": "#6366f1",
+                        "background-light": "#f5f7f8",
+                        "background-dark": "#0a0a0c",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.5rem",
+                        "lg": "1rem",
+                        "xl": "1.5rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .sidebar-glass {
+            background: rgba(10, 10, 12, 0.7);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .glow-primary {
+            box-shadow: 0 0 20px rgba(64, 186, 247, 0.15);
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #40baf7 0%, #6366f1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen flex">
+<!-- Sidebar -->
+<aside class="fixed inset-y-0 left-0 w-64 sidebar-glass z-50 flex flex-col p-6">
+<div class="flex items-center gap-3 mb-10 px-2">
+<div class="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center text-background-dark">
+<span class="material-symbols-outlined font-bold">movie_filter</span>
+</div>
+<div>
+<h1 class="text-xl font-extrabold tracking-tight text-slate-100">AITuber</h1>
+<p class="text-[10px] uppercase tracking-widest text-primary font-bold">Creator Studio</p>
+</div>
+</div>
+<nav class="flex-1 space-y-2">
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/10 text-primary border border-primary/20" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-medium text-sm">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-slate-100 transition-all" href="#">
+<span class="material-symbols-outlined">explore</span>
+<span class="font-medium text-sm">Explore</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-slate-100 transition-all" href="#">
+<span class="material-symbols-outlined">video_library</span>
+<span class="font-medium text-sm">My Videos</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-slate-100 transition-all" href="#">
+<span class="material-symbols-outlined">auto_awesome</span>
+<span class="font-medium text-sm">Series Workflow</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-white/5 hover:text-slate-100 transition-all" href="#">
+<span class="material-symbols-outlined">analytics</span>
+<span class="font-medium text-sm">Analytics</span>
+</a>
+</nav>
+<div class="mt-auto pt-6 border-t border-white/5">
+<div class="glass rounded-xl p-4 mb-4">
+<p class="text-xs text-slate-400 mb-2 font-medium">GPU Credits</p>
+<div class="w-full bg-white/10 h-1.5 rounded-full mb-2">
+<div class="bg-primary h-full rounded-full w-3/4"></div>
+</div>
+<p class="text-[10px] text-primary font-bold">750 / 1000 Units</p>
+</div>
+<button class="w-full py-3 bg-primary text-background-dark font-bold rounded-xl text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-all shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-sm">bolt</span>
+                Upgrade to Pro
+            </button>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="flex-1 ml-64 p-8">
+<!-- Top Bar -->
+<header class="flex items-center justify-between mb-10">
+<div class="flex-1 max-w-xl">
+<div class="relative group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" placeholder="Search for videos, models, or assets..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4 ml-8">
+<button class="w-10 h-10 glass rounded-full flex items-center justify-center text-slate-400 hover:text-primary transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="w-10 h-10 glass rounded-full flex items-center justify-center text-slate-400 hover:text-primary transition-all">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="h-10 w-px bg-white/10 mx-2"></div>
+<div class="flex items-center gap-3">
+<div class="text-right">
+<p class="text-sm font-bold text-slate-100">Alex Rivera</p>
+<p class="text-[10px] text-primary uppercase font-bold tracking-tighter">Gold Tier</p>
+</div>
+<div class="w-10 h-10 rounded-full bg-slate-800 border border-primary/30 overflow-hidden">
+<img alt="User avatar" class="w-full h-full object-cover" data-alt="A stylish futuristic human avatar portrait" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAOObJWoIQX7VWvHlQNiM16_N1aUbk6NrgjjW3eUX7yzPeCWzmYAhBTbMyX3_XmehIOKsN9Qi7tSmJ1_phtGNc5-qOjQnw11xQvNsGUAi_k2_V04R0iVRIBiOap3CoGPjUf4IWYkBd6ICkeiwX5Svuo4EVC4BbslrttCQ4Rj68L4XyuLA6MwmPXwdKVb5df1D529OE11tlPyanr8uKHVTNl64UDA3_exnS_Dk2uAHJh5O4TBOHadZMfmyxjMaPXxtMOSyqXhV1ITcc"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Welcome Section -->
+<section class="mb-10">
+<h2 class="text-4xl font-black text-slate-100 mb-2">Welcome back, <span class="gradient-text">Creator</span></h2>
+<p class="text-slate-400 max-w-2xl">Your AI generation pipeline is optimal. 3 jobs are currently processing in the cloud. Ready to start something new?</p>
+</section>
+<!-- Action Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+<div class="relative group overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 to-transparent p-8 glow-primary hover:border-primary/50 transition-all cursor-pointer">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined text-8xl">video_call</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-100 mb-2">Create Video</h3>
+<p class="text-slate-400 mb-6 max-w-xs text-sm">Generate high-fidelity AI videos from text prompts or reference images instantly.</p>
+<div class="flex items-center gap-2 text-primary font-bold text-sm">
+                    Launch Studio <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</div>
+</div>
+<div class="relative group overflow-hidden rounded-xl border border-accent/20 bg-gradient-to-br from-accent/10 to-transparent p-8 hover:border-accent/50 transition-all cursor-pointer shadow-lg shadow-accent/5">
+<div class="absolute top-0 right-0 p-4 opacity-10 text-accent">
+<span class="material-symbols-outlined text-8xl">account_tree</span>
+</div>
+<h3 class="text-2xl font-bold text-slate-100 mb-2">Series Workflow</h3>
+<p class="text-slate-400 mb-6 max-w-xs text-sm">Automate your entire AITuber series with persistent characters and narrative logic.</p>
+<div class="flex items-center gap-2 text-accent font-bold text-sm">
+                    Open Orchestrator <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</div>
+</div>
+</div>
+<!-- Stats -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
+<div class="glass p-6 rounded-xl">
+<div class="flex items-center justify-between mb-4">
+<span class="text-xs font-bold text-slate-500 uppercase">Total Generated</span>
+<span class="material-symbols-outlined text-primary text-xl">movie</span>
+</div>
+<p class="text-3xl font-black text-slate-100">1,284 <span class="text-xs text-emerald-500 font-medium">+12%</span></p>
+<p class="text-[10px] text-slate-500 mt-1">Videos produced this month</p>
+</div>
+<div class="glass p-6 rounded-xl">
+<div class="flex items-center justify-between mb-4">
+<span class="text-xs font-bold text-slate-500 uppercase">Account Status</span>
+<span class="material-symbols-outlined text-accent text-xl">verified</span>
+</div>
+<p class="text-3xl font-black text-slate-100">Premium</p>
+<p class="text-[10px] text-slate-500 mt-1">Renewal in 14 days</p>
+</div>
+<div class="glass p-6 rounded-xl">
+<div class="flex items-center justify-between mb-4">
+<span class="text-xs font-bold text-slate-500 uppercase">Network</span>
+<span class="material-symbols-outlined text-blue-400 text-xl">hub</span>
+</div>
+<p class="text-3xl font-black text-slate-100">99.8%</p>
+<p class="text-[10px] text-slate-500 mt-1">Uptime across nodes</p>
+</div>
+</div>
+<!-- Recent Jobs Table -->
+<div class="glass rounded-xl overflow-hidden mb-10">
+<div class="px-6 py-5 border-b border-white/5 flex items-center justify-between">
+<h3 class="text-lg font-bold text-slate-100">Recent Generation Jobs</h3>
+<button class="text-sm text-primary font-bold hover:underline">View All History</button>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full text-left">
+<thead>
+<tr class="text-xs text-slate-500 border-b border-white/5 uppercase tracking-wider">
+<th class="px-6 py-4 font-bold">Project Name</th>
+<th class="px-6 py-4 font-bold">Type</th>
+<th class="px-6 py-4 font-bold">Status</th>
+<th class="px-6 py-4 font-bold">Progress</th>
+<th class="px-6 py-4 font-bold text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="text-sm divide-y divide-white/5">
+<tr class="hover:bg-white/5 transition-colors">
+<td class="px-6 py-4 font-medium text-slate-100">Cyber City Vlog #04</td>
+<td class="px-6 py-4 text-slate-400">4K Render</td>
+<td class="px-6 py-4">
+<span class="px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-bold uppercase">Completed</span>
+</td>
+<td class="px-6 py-4">
+<div class="w-24 bg-white/10 h-1.5 rounded-full overflow-hidden">
+<div class="bg-emerald-500 h-full w-full"></div>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-primary"><span class="material-symbols-outlined text-lg">download</span></button>
+<button class="text-slate-400 hover:text-slate-100 ml-2"><span class="material-symbols-outlined text-lg">more_vert</span></button>
+</td>
+</tr>
+<tr class="hover:bg-white/5 transition-colors">
+<td class="px-6 py-4 font-medium text-slate-100">Anime Girl Stream - Loop</td>
+<td class="px-6 py-4 text-slate-400">Series Ep</td>
+<td class="px-6 py-4">
+<span class="px-2 py-1 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase">Processing</span>
+</td>
+<td class="px-6 py-4">
+<div class="w-24 bg-white/10 h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[64%]"></div>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-primary"><span class="material-symbols-outlined text-lg">stop_circle</span></button>
+<button class="text-slate-400 hover:text-slate-100 ml-2"><span class="material-symbols-outlined text-lg">more_vert</span></button>
+</td>
+</tr>
+<tr class="hover:bg-white/5 transition-colors">
+<td class="px-6 py-4 font-medium text-slate-100">Deep Space Documentary</td>
+<td class="px-6 py-4 text-slate-400">Upscaling</td>
+<td class="px-6 py-4">
+<span class="px-2 py-1 rounded-full bg-amber-500/10 text-amber-500 text-[10px] font-bold uppercase">Queued</span>
+</td>
+<td class="px-6 py-4">
+<div class="w-24 bg-white/10 h-1.5 rounded-full overflow-hidden">
+<div class="bg-white/20 h-full w-0"></div>
+</div>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="text-slate-400 hover:text-red-400"><span class="material-symbols-outlined text-lg">delete</span></button>
+<button class="text-slate-400 hover:text-slate-100 ml-2"><span class="material-symbols-outlined text-lg">more_vert</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Explore Grid Section -->
+<section class="mb-10">
+<div class="flex items-center justify-between mb-6">
+<h3 class="text-lg font-bold text-slate-100">Trending Styles</h3>
+<div class="flex gap-2">
+<button class="w-8 h-8 glass rounded-lg flex items-center justify-center text-slate-400"><span class="material-symbols-outlined text-sm">chevron_left</span></button>
+<button class="w-8 h-8 glass rounded-lg flex items-center justify-center text-slate-400"><span class="material-symbols-outlined text-sm">chevron_right</span></button>
+</div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+<div class="relative aspect-video rounded-xl overflow-hidden group">
+<img alt="Trend style 1" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Cyberpunk neon city street at night" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB11jL1vJTDzIkk5LqZ_k0yveIAWMsuzZv8UAiEeencM9aQnGqGD-CPuoqB9Mjjmyet6BrFVxMa4heI_kJsVy7WvwExanFUiP73yBfegbCiY67Is7Up0JcUefQEpQx1MppHu5Bf1vv490I7zszCm371YEX00lrLVlbTdP9aQp6EPSLU0DbYUUyEijVX3Z6AxsWAMqtQ64pincajsrOeMumdtj4cU803T18xNVSoT4loknPYN2-PPQiiMfR513xSh4ZtE8RaShbAO30"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
+<p class="text-xs font-bold text-slate-100">Cyber-Tech 2.0</p>
+<p class="text-[10px] text-primary">By AIStudio</p>
+</div>
+</div>
+<div class="relative aspect-video rounded-xl overflow-hidden group">
+<img alt="Trend style 2" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Ethereal dreamlike watercolor forest landscape" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAoVO62UFgsgdiS-7mxd3yrg-tBUffrFYyCf_VR9-R6C4_e0oc8g18QMz7sq4NlDhyH1PwUnvfU3Ul8orBAxbOrojPNEuE1F1MtkX0Rr-mML6of3yERWgRhNchDaBcThPDLbMaJrwqkIEZDMtqPzRaaaldUolt4SNFyJfunBO4v74Rvazm_xxpai3QkxJCibMZ7u0JQ8eeRMypofsgFB0o921Lj5x_9AQ_O4DLIuaEAd8cL89RwX8sLqyLsQtuu_Bnut13Mtff9TQc"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
+<p class="text-xs font-bold text-slate-100">Aesthetic Dream</p>
+<p class="text-[10px] text-primary">By Lumina</p>
+</div>
+</div>
+<div class="relative aspect-video rounded-xl overflow-hidden group">
+<img alt="Trend style 3" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Hyper-realistic character portrait with gold lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC4z6xmOk2r-eQcyaTEJ142pSd2XvF597StAhsjYkEpMY5OzTqNOXgeeFBnr2bBgYf2VhI_dWhRKc9yoJkDiokisQgT4PpKUrrRrtiIlXvCBqs8ymwIVCxtaPMW9YC9AlhyW5GXO2Pb5AggCXwDxUNoiclhw_7jZu9gULdfGIrL5IOe123L_ndDoy7tpWkBRSy-nSnsvQE12RWh9icSragQs9RgGptXbRXJ0uVbrPdjVd2v-i3diFHS4zyYA8rEHpDUDBMwe6usoM4"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
+<p class="text-xs font-bold text-slate-100">Vogue Portrait</p>
+<p class="text-[10px] text-primary">By GlamAI</p>
+</div>
+</div>
+<div class="relative aspect-video rounded-xl overflow-hidden group">
+<img alt="Trend style 4" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Classic synthwave sun and grid landscape" src="https://lh3.googleusercontent.com/aida-public/AB6AXuByAZv9iqCnLfccBgV_PILRyTTmZoSJ0q3jeaEKFpr-Nhq7bqzXO9dCnPnKh-lk_rI5-iUww_5mlljqg01xiRVB92QYSD8FuD-Ja23THviBkE3Tgbz44PoMSFQquMIxQB7KeVCvOYPyzG3fJUUoJyddRzie7s4-lH470CEw9YtfNWUwkjnM3Pj7Wn4NxNAS49An_uEsC_8hBF4LzOv5aPl-APlRs-h-FqPsUbN3sLx43KIZW5qT-H1asvSn5L0AZr2sfG3OAqDBcCo"/>
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex flex-col justify-end">
+<p class="text-xs font-bold text-slate-100">Retrowave Peak</p>
+<p class="text-[10px] text-primary">By SynthVibe</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<footer class="border-t border-white/5 pt-8 pb-12 flex flex-col md:flex-row items-center justify-between gap-6">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded bg-primary/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-sm font-bold">movie_filter</span>
+</div>
+<p class="text-xs text-slate-500 font-medium tracking-tight">© 2024 AITuber Technologies Inc. All nodes secured.</p>
+</div>
+<div class="flex items-center gap-6">
+<a class="text-xs text-slate-500 hover:text-primary transition-colors" href="#">Documentation</a>
+<a class="text-xs text-slate-500 hover:text-primary transition-colors" href="#">API Keys</a>
+<a class="text-xs text-slate-500 hover:text-primary transition-colors" href="#">Terms of Service</a>
+<a class="text-xs text-slate-500 hover:text-primary transition-colors" href="#">Support</a>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">System Online</span>
+</div>
+</div>
+</footer>
+</main>
+</body></html>

@@ -1,9 +1,9 @@
 ---
 name: clean-code
 description: Pragmatic coding standards - concise, direct, no over-engineering, no unnecessary comments
-category: development
-version: 4.1.0-fractal
-layer: master-skill
+allowed-tools: Read, Write, Edit
+version: 2.0
+priority: CRITICAL
 ---
 
 # Clean Code - Pragmatic AI Coding Standards
@@ -143,10 +143,59 @@ File to edit: UserService.ts
 
 > 🔴 **CRITICAL:** Each agent runs ONLY their own skill's scripts after completing work.
 
-## 🧠 Knowledge Modules (Fractal Skills)
+### Agent → Script Mapping
 
-### 1. [Agent → Script Mapping](./sub-skills/agent-script-mapping.md)
-### 2. [🔴 Script Output Handling (READ → SUMMARIZE → ASK)](./sub-skills/script-output-handling-read-summarize-ask.md)
-### 3. [❌ Errors Found (X items)](./sub-skills/errors-found-x-items.md)
-### 4. [⚠️ Warnings (Y items)](./sub-skills/warnings-y-items.md)
-### 5. [✅ Passed (Z items)](./sub-skills/passed-z-items.md)
+| Agent | Script | Command |
+|-------|--------|---------|
+| **frontend-specialist** | UX Audit | `python .agent/skills/frontend-design/scripts/ux_audit.py .` |
+| **frontend-specialist** | A11y Check | `python .agent/skills/frontend-design/scripts/accessibility_checker.py .` |
+| **backend-specialist** | API Validator | `python .agent/skills/api-patterns/scripts/api_validator.py .` |
+| **mobile-developer** | Mobile Audit | `python .agent/skills/mobile-design/scripts/mobile_audit.py .` |
+| **database-architect** | Schema Validate | `python .agent/skills/database-design/scripts/schema_validator.py .` |
+| **security-auditor** | Security Scan | `python .agent/skills/vulnerability-scanner/scripts/security_scan.py .` |
+| **seo-specialist** | SEO Check | `python .agent/skills/seo-fundamentals/scripts/seo_checker.py .` |
+| **seo-specialist** | GEO Check | `python .agent/skills/geo-fundamentals/scripts/geo_checker.py .` |
+| **performance-optimizer** | Lighthouse | `python .agent/skills/performance-profiling/scripts/lighthouse_audit.py <url>` |
+| **test-engineer** | Test Runner | `python .agent/skills/testing-patterns/scripts/test_runner.py .` |
+| **test-engineer** | Playwright | `python .agent/skills/webapp-testing/scripts/playwright_runner.py <url>` |
+| **Any agent** | Lint Check | `python .agent/skills/lint-and-validate/scripts/lint_runner.py .` |
+| **Any agent** | Type Coverage | `python .agent/skills/lint-and-validate/scripts/type_coverage.py .` |
+| **Any agent** | i18n Check | `python .agent/skills/i18n-localization/scripts/i18n_checker.py .` |
+
+> ❌ **WRONG:** `test-engineer` running `ux_audit.py`
+> ✅ **CORRECT:** `frontend-specialist` running `ux_audit.py`
+
+---
+
+### 🔴 Script Output Handling (READ → SUMMARIZE → ASK)
+
+**When running a validation script, you MUST:**
+
+1. **Run the script** and capture ALL output
+2. **Parse the output** - identify errors, warnings, and passes
+3. **Summarize to user** in this format:
+
+```markdown
+## Script Results: [script_name.py]
+
+### ❌ Errors Found (X items)
+- [File:Line] Error description 1
+- [File:Line] Error description 2
+
+### ⚠️ Warnings (Y items)
+- [File:Line] Warning description
+
+### ✅ Passed (Z items)
+- Check 1 passed
+- Check 2 passed
+
+**Should I fix the X errors?**
+```
+
+4. **Wait for user confirmation** before fixing
+5. **After fixing** → Re-run script to confirm
+
+> 🔴 **VIOLATION:** Running script and ignoring output = FAILED task.
+> 🔴 **VIOLATION:** Auto-fixing without asking = Not allowed.
+> 🔴 **Rule:** Always READ output → SUMMARIZE → ASK → then fix.
+

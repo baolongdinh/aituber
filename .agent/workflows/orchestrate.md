@@ -1,5 +1,5 @@
 ---
-description: Task quá chua? Gọi cả hội đồng chuyên gia vào làm.
+description: Coordinate multiple agents for complex tasks. Use for multi-perspective analysis, comprehensive reviews, or tasks requiring different domain expertise.
 ---
 
 # Multi-Agent Orchestration
@@ -63,11 +63,11 @@ $ARGUMENTS
 ```
 After PLAN.md is complete, ASK:
 
-"✅ Plan oluşturuldu: docs/PLAN.md
+"✅ Plan created: docs/PLAN.md
 
-Onaylıyor musunuz? (Y/N)
-- Y: Implementation başlatılır
-- N: Planı düzeltirim"
+Do you approve? (Y/N)
+- Y: Start implementation
+- N: I'll revise the plan"
 ```
 
 > 🔴 **DO NOT proceed to Phase 2 without explicit user approval!**
@@ -160,8 +160,8 @@ When invoking ANY subagent, you MUST include:
 Use the project-planner agent to create PLAN.md:
 
 **CONTEXT:**
-- User Request: "Öğrenciler için sosyal platform, mock data ile"
-- Decisions: Tech=Vue 3, Layout=Grid Widget, Auth=Mock, Design=Genç Dinamik
+- User Request: "A social platform for students, using mock data"
+- Decisions: Tech=Vue 3, Layout=Grid Widgets, Auth=Mock, Design=Youthful & dynamic
 - Previous Work: Orchestrator asked 6 questions, user chose all options
 - Current Plan: playful-roaming-dream.md exists in workspace with initial structure
 
