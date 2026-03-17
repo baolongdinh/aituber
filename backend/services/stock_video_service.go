@@ -347,6 +347,26 @@ func (sv *StockVideoService) processAndTrimStockVideo(downloadedPaths []string, 
 
 // generateImageLocalHub calls the local Python hub service to generate an image
 func (sv *StockVideoService) generateImageLocalHub(ctx context.Context, prompt string, orientation string) ([]byte, error) {
+	const maxRetries = 5
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			fmt.Printf("[LocalHub] Retry attempt %d/%d after error: %v\n", attempt, maxRetries, lastErr)
+			time.Sleep(2 * time.Second)
+		}
+
+		img, err := sv.attemptGenerateImageLocalHub(ctx, prompt, orientation)
+		if err == nil {
+			return img, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf("local hub generation failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+func (sv *StockVideoService) attemptGenerateImageLocalHub(ctx context.Context, prompt string, orientation string) ([]byte, error) {
 	// 1. Request generation with correct resolution
 	width, height := 1920, 1080 // Default Landscape
 	if orientation == "portrait" {
@@ -914,6 +934,26 @@ func (sv *StockVideoService) mergeVideosWithTransition(inputPaths []string, outp
 
 // generateImageRemoteHub calls the remote AI hub service with polling
 func (sv *StockVideoService) generateImageRemoteHub(ctx context.Context, prompt string, orientation string) ([]byte, error) {
+	const maxRetries = 5
+	var lastErr error
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			fmt.Printf("[RemoteHub] Retry attempt %d/%d after error: %v\n", attempt, maxRetries, lastErr)
+			time.Sleep(2 * time.Second)
+		}
+
+		img, err := sv.attemptGenerateImageRemoteHub(ctx, prompt, orientation)
+		if err == nil {
+			return img, nil
+		}
+		lastErr = err
+	}
+
+	return nil, fmt.Errorf("remote hub generation failed after %d attempts: %w", maxRetries, lastErr)
+}
+
+func (sv *StockVideoService) attemptGenerateImageRemoteHub(ctx context.Context, prompt string, orientation string) ([]byte, error) {
 	fmt.Printf("[RemoteHub] Starting generation with prompt: %q, orientation: %s\n", prompt, orientation)
 
 	if sv.remoteHubURL == "" {

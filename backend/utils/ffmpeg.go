@@ -546,11 +546,11 @@ func BurnSubtitles(inputPath, srtPath, outputPath, orientation string) error {
 	var style string
 	if orientation == "portrait" {
 		// TikTok style: Vibrant yellow text, bold, slightly higher bottom position, auto-wrapping
-		// MarginV=280 to be above the post interaction bar but below center
-		style = "Fontname=Arial Bold,Fontsize=20,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2.0,Shadow=1.5,Alignment=2,MarginV=280,MarginL=60,MarginR=60,Bold=1,WrapStyle=0"
+		// MarginV=80 to be above the post interaction bar but below center (approx 1/3 from bottom)
+		style = "Fontname=Arial Bold,Fontsize=20,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2.0,Shadow=1.5,Alignment=2,MarginV=80,MarginL=60,MarginR=60,Bold=1,WrapStyle=0"
 	} else {
 		// YouTube style: Crisp white text, semi-bold, bottom center, auto-wrapping
-		style = "Fontname=Arial Bold,Fontsize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=1,Alignment=2,MarginV=80,MarginL=100,MarginR=100,Bold=1,WrapStyle=0"
+		style = "Fontname=Arial Bold,Fontsize=16,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1.5,Shadow=1,Alignment=2,MarginV=50,MarginL=100,MarginR=100,Bold=1,WrapStyle=0"
 	}
 
 	// FFmpeg subtitles filter needs specific escaping. Using double quotes for style to handle special chars.
