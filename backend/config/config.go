@@ -23,6 +23,17 @@ type Config struct {
 	// Subtitles
 	EnableSubtitles bool
 
+	// Database
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+
+	// JWT Authentication
+	JWTSecret            string
+	JWTAccessTokenExpiry int // hours
+
 	// API Keys Pool
 	TTSAPIKeys       []string
 	ElevenLabsAPIKey string
@@ -71,6 +82,17 @@ func LoadConfig() (*Config, error) {
 
 		EnableSubtitles: getEnvAsBool("ENABLE_SUBTITLES", false),
 
+		// Database
+		DBHost:     getEnv("DATABASE_HOST", "localhost"),
+		DBPort:     getEnv("DATABASE_PORT", "5432"),
+		DBUser:     getEnv("DATABASE_USER", "postgres"),
+		DBPassword: getEnv("DATABASE_PASSWORD", ""),
+		DBName:     getEnv("DATABASE_NAME", "aituber"),
+
+		// JWT
+		JWTSecret:            getEnv("JWT_SECRET", "change-this-secret-in-production"),
+		JWTAccessTokenExpiry: getEnvAsInt("JWT_ACCESS_TOKEN_EXPIRY_HOURS", 24),
+
 		// Parse API keys
 		TTSAPIKeys:       parseAPIKeys(getEnv("TTS_API_KEYS", "")),
 		ElevenLabsAPIKey: getEnv("ELEVENLABS_API_KEY", ""),
@@ -112,6 +134,12 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// GetDatabaseDSN returns the Data Source Name for PostgreSQL
+func (c *Config) GetDatabaseDSN() string {
+	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
+		c.DBHost, c.DBUser, c.DBPassword, c.DBName, c.DBPort)
 }
 
 // Validate checks if configuration is valid

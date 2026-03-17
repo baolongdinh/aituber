@@ -2,12 +2,15 @@ package main
 
 import (
 	"aituber/config"
-	"aituber/handlers"
-	"aituber/services"
+	"aituber/internal/model"
+	"aituber/internal/repository"
+	"aituber/internal/router"
+	"aituber/internal/service"
+	"aituber/pkg/database"
+	"aituber/pkg/jwtutil" // Dummy change to align text if needed, but really just removing duplicate
 	"aituber/utils"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -22,11 +25,24 @@ func main() {
 	}
 	log.Printf("Configuration loaded: %s", cfg)
 
+	// Initialize Database
+	db, err := database.Connect(cfg.GetDatabaseDSN())
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	// Migrate all models
+	if err := database.AutoMigrate(db, &model.User{}, &model.Job{}, &model.Series{}, &model.Video{}); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Initialize JWT Manager
+	jwtManager := jwtutil.NewManager(cfg.JWTSecret, cfg.JWTAccessTokenExpiry)
+
 	// Create Gin router
-	router := gin.Default()
+	r := gin.Default()
 
 	// Setup CORS
-	router.Use(cors.New(cors.Config{
+	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
@@ -35,16 +51,17 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Health check endpoint
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "healthy",
-			"time":   time.Now(),
-		})
-	})
-
 	// --- SETUP DEPENDENCY INJECTION ---
-	// 1. API pools
+	// 1. Repositories
+	userRepo := repository.NewUserRepository(db)
+	jobRepo := repository.NewJobRepository(db)
+	seriesRepo := repository.NewSeriesRepository(db)
+	videoRepo := repository.NewVideoRepository(db)
+
+	// 2. Services
+	jobSvc := service.NewJobService(jobRepo, seriesRepo, videoRepo)
+
+	// 3. Legacy Core Services (Working with new JobService)
 	ttsPool := utils.NewAPIKeyPool(cfg.TTSAPIKeys)
 	var videoPool *utils.APIKeyPool
 	if len(cfg.VideoAPIKeys) > 0 {
@@ -53,12 +70,8 @@ func main() {
 		videoPool = utils.NewAPIKeyPool([]string{"placeholder"})
 	}
 
-	// 2. Job Manager
-	jobManager := services.NewJobManager()
-
-	// 3. Core Services
-	textProcessor := services.NewTextProcessor(cfg.AudioChunkSize, cfg.VideoSegmentDuration)
-	audioService := services.NewAudioService(
+	textProcessor := service.NewTextProcessor(cfg.AudioChunkSize, cfg.VideoSegmentDuration)
+	audioService := service.NewAudioService(
 		ttsPool,
 		cfg.ElevenLabsAPIKey,
 		cfg.TempDir,
@@ -66,7 +79,7 @@ func main() {
 		cfg.AudioSampleRate,
 		cfg.AudioCrossfadeDuration,
 	)
-	videoService := services.NewVideoService(
+	videoProcessor := service.NewVideoProcessor(
 		videoPool,
 		cfg.TempDir,
 		cfg.VideoBitrate,
@@ -74,45 +87,39 @@ func main() {
 		cfg.VideoFPS,
 		cfg.VideoTransitionDuration,
 	)
-	geminiService := services.NewGeminiService(cfg.GeminiAPIKeys)
-	hfService := services.NewHuggingFaceService(cfg.HuggingFaceTokens)
-	stockVideoService := services.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService, cfg.LocalHubURL, cfg.RemoteHubURL, cfg.RemoteHubToken)
-	composerService := services.NewComposerService(cfg.VideoBitrate)
+	geminiService := service.NewGeminiService(cfg.GeminiAPIKeys)
+	hfService := service.NewHuggingFaceService(cfg.HuggingFaceTokens)
+	stockVideoService := service.NewStockVideoService(cfg.PexelsAPIKey, cfg.TempDir, cfg.CacheDir, geminiService, hfService, cfg.LocalHubURL, cfg.RemoteHubURL, cfg.RemoteHubToken)
+	composerService := service.NewComposerService(cfg.VideoBitrate)
 
-	// 4. Orchestrator Workflow
-	workflowSvc := services.NewVideoWorkflowService(
+	// 4. Orchestrator Workflow (Updated to use new JobService)
+	workflowSvc := service.NewVideoWorkflowService(
 		cfg,
-		jobManager,
+		jobSvc,
 		textProcessor,
 		audioService,
-		videoService,
+		videoProcessor,
 		stockVideoService,
 		composerService,
 		geminiService,
 	)
 
-	// 5. Initialize handlers
-	videoHandler := handlers.NewVideoHandler(cfg, jobManager, workflowSvc, geminiService)
-	seriesHandler := handlers.NewSeriesHandler(cfg, jobManager, workflowSvc, geminiService)
+	// 5. Router Setup (Setup v1 API with Auth)
+	router.Setup(r, router.RouterConfig{
+		Cfg:       cfg,
+		DB:        db,
+		JWT:       jwtManager,
+		JobSvc:    jobSvc,
+		Workflow:  workflowSvc,
+		ScriptSvc: geminiService,
+	})
 
-	// API routes
-	api := router.Group("/api")
-	{
-		api.POST("/generate", videoHandler.Generate)
-		api.GET("/status/:job_id", videoHandler.GetStatus)
-		api.GET("/download/:job_id", videoHandler.Download)
-		api.GET("/download-subtitle/:job_id", videoHandler.DownloadSubtitle)
+	// Keep variables used
+	_ = userRepo
 
-		// Series routes
-		api.POST("/generate-series", seriesHandler.GenerateSeries)
-		api.GET("/series-status/:series_id", seriesHandler.GetSeriesStatus)
-		api.POST("/retry-series-part/:series_id/:part_index", seriesHandler.RetrySeriesPart)
-	}
-
-	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Starting server on %s", addr)
-	if err := router.Run(addr); err != nil {
+	if err := r.Run(addr); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
