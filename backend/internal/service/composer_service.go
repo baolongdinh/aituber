@@ -36,3 +36,8 @@ func (cs *ComposerService) ComposeVideoWithAudio(videoPath, audioPath, outputPat
 func (cs *ComposerService) ConcatVideos(videoPaths []string, outputPath string) error {
 	return utils.ConcatVideoFiles(videoPaths, outputPath)
 }
+
+// ExtractThumbnail extracts a frame from video as thumbnail
+func (cs *ComposerService) ExtractThumbnail(videoPath, outputPath string, timeOffset float64) error {
+	return utils.ExtractThumbnail(videoPath, outputPath, timeOffset)
+}

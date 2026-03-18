@@ -1,0 +1,78 @@
+@import 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap';
+@import 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-dark: #0a0a0c;
+  --card-dark: #121214;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  
+  /* TikTok Theme */
+  --tiktok-primary: #a14bff;
+  --tiktok-secondary: #ff3f6c;
+  
+  /* YouTube Theme */
+  --youtube-primary: #ff0000;
+  --youtube-secondary: #b30000;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: 'Inter', sans-serif;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.bg-radial-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Dynamic themes based on <html> or <body> class */
+.theme-tiktok .bg-radial-glow {
+  background: radial-gradient(circle at 50% 50%, rgba(161, 75, 255, 0.1) 0%, rgba(10, 10, 12, 0) 70%);
+}
+
+.theme-youtube .bg-radial-glow {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 0, 0, 0.08) 0%, rgba(10, 10, 12, 0) 70%);
+}
+
+.glass-card {
+  background: rgba(18, 18, 20, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 1rem;
+}
+
+.text-gradient-tiktok {
+  background: linear-gradient(to right, #a14bff, #ff3f6c);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-youtube {
+  background: linear-gradient(to right, #ff0000, #b30000);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}

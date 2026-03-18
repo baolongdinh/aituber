@@ -63,10 +63,16 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest
 	}
 
 	// 1. Script Generation
-	segments, err := s.generateScript(ctx, jobID, req)
+	segments, aiTitle, err := s.generateScript(ctx, jobID, req)
 	if err != nil {
 		s.jobSvc.MarkFailed(ctx, jobID, err)
 		return
+	}
+
+	// Update job title if AI generated a better one
+	if aiTitle != "" {
+		s.jobSvc.UpdateJobTitle(ctx, jobID, aiTitle)
+		req.ContentName = aiTitle // Use it for folder naming too if needed, or keep original slug
 	}
 
 	// 2. Parallel Segment Processing (Audio + Fetch Source Material)
@@ -181,41 +187,52 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest
 		}
 	}
 
-	// 7. Save
-	s.jobSvc.UpdateProgress(ctx, jobID, "Saving final output", 95)
+	// 7. Save & Thumbnail Extraction
+	s.jobSvc.UpdateProgress(ctx, jobID, "Saving final output & extracting thumbnail", 95)
 	savedPath, _ := s.saveToOutputFolder(finalOutputPath, req.Platform, req.ContentName)
 
-	s.jobSvc.MarkCompleted(ctx, jobID, finalOutputPath, savedPath)
+	// Extract and save thumbnail
+	tempThumbPath := filepath.Join(tempDir, "output", "thumbnail.jpg")
+	var savedThumbPath string
+	if err := s.composerService.ExtractThumbnail(finalOutputPath, tempThumbPath, 1.0); err == nil {
+		savedThumbPath, _ = s.saveThumbnailToOutputFolder(tempThumbPath, req.Platform, req.ContentName)
+	}
+
+	s.jobSvc.MarkCompleted(ctx, jobID, finalOutputPath, savedPath, savedThumbPath)
 	log.Printf("[Job %s] Video generation completed successfully", jobID)
 }
 
 // Sub-pipeline: Script
-func (s *VideoWorkflowService) generateScript(ctx context.Context, jobID string, req GenerateRequest) ([]VideoSegment, error) {
+func (s *VideoWorkflowService) generateScript(ctx context.Context, jobID string, req GenerateRequest) ([]VideoSegment, string, error) {
 	// 0. Use pre-provided segments if exists
 	if len(req.Segments) > 0 {
 		log.Printf("[Job %s] Using %d pre-provided segments", jobID, len(req.Segments))
-		return req.Segments, nil
+		return req.Segments, "", nil
 	}
 
 	var segments []VideoSegment
-	script := "" // req.Script is not in GenerateRequest, we might need to add it or handle it separately
+	var title string
+	script := ""
 
 	if script == "" {
 		s.jobSvc.UpdateProgress(ctx, jobID, "Generating script with Gemini AI", 8)
+		var genScript *GeneratedScript
 		var genErr error
 		if req.Platform == "tiktok" {
-			segments, genErr = s.geminiService.GenerateTikTokScript(req.Topic)
+			genScript, genErr = s.geminiService.GenerateTikTokScript(req.Topic)
 		} else {
-			segments, genErr = s.geminiService.GenerateYouTubeScript(req.Topic)
+			genScript, genErr = s.geminiService.GenerateYouTubeScript(req.Topic)
 		}
 		if genErr != nil {
-			return nil, fmt.Errorf("Gemini script generation failed: %w", genErr)
+			return nil, "", fmt.Errorf("Gemini script generation failed: %w", genErr)
 		}
-		log.Printf("[Job %s] Generated script (%d segments) for topic: %q", jobID, len(segments), req.Topic)
+		segments = genScript.Segments
+		title = genScript.Title
+		log.Printf("[Job %s] Generated script (%d segments) with title %q for topic: %q", jobID, len(segments), title, req.Topic)
 	} else {
+		// ... (legacy handling for manual script, returns empty title)
 		if len(script) > s.cfg.MaxTextLength {
 			script = script[:s.cfg.MaxTextLength]
-			log.Printf("[Job %s] Script truncated to %d chars", jobID, s.cfg.MaxTextLength)
 		}
 		chunks := s.textProcessor.SplitForSubtitles(script)
 		for _, chunk := range chunks {
@@ -224,9 +241,8 @@ func (s *VideoWorkflowService) generateScript(ctx context.Context, jobID string,
 				VisualPrompt: s.textProcessor.ExtractKeywordsFromText(chunk, req.StockKeywords),
 			})
 		}
-		log.Printf("[Job %s] Created %d segments from direct script text", jobID, len(segments))
 	}
-	return segments, nil
+	return segments, title, nil
 }
 
 func (s *VideoWorkflowService) composeVideoWithAudio(ctx context.Context, jobID, tempDir, mergedVideoPath, mergedAudioPath string) (string, error) {
@@ -247,7 +263,19 @@ func (s *VideoWorkflowService) saveToOutputFolder(srcPath, platform, contentName
 	if err := utils.CopyFile(srcPath, destPath); err != nil {
 		return "", fmt.Errorf("failed to copy file: %w", err)
 	}
-	return filepath.Join("ai-videos", platform, contentName, "final_video.mp4"), nil
+	return filepath.Join("/", "ai-videos", platform, contentName, "final_video.mp4"), nil
+}
+
+func (s *VideoWorkflowService) saveThumbnailToOutputFolder(srcPath, platform, contentName string) (string, error) {
+	destDir := filepath.Join(s.cfg.OutputDir, platform, contentName)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create output dir: %w", err)
+	}
+	destPath := filepath.Join(destDir, "thumbnail.jpg")
+	if err := utils.CopyFile(srcPath, destPath); err != nil {
+		return "", fmt.Errorf("failed to copy thumbnail: %w", err)
+	}
+	return filepath.Join("/", "ai-videos", platform, contentName, "thumbnail.jpg"), nil
 }
 
 // GenerateSRT creates an SRT subtitle file based on audio durations and texts

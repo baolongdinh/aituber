@@ -78,8 +78,7 @@ type geminiResponse struct {
 	} `json:"error"`
 }
 
-// GenerateYouTubeScript generates a long-form YouTube script from a topic
-func (gs *GeminiService) GenerateYouTubeScript(topic string) ([]VideoSegment, error) {
+func (gs *GeminiService) GenerateYouTubeScript(topic string) (*GeneratedScript, error) {
 	prompt := fmt.Sprintf(`You are an expert Vietnamese YouTube scriptwriter AND visual director. Your task is to write a complete video script about: "%s"
 
 PHASE 1 — GENRE DETECTION & STYLE BIBLE:
@@ -113,32 +112,38 @@ ADDITIONAL RULES:
 - visual_description: ENGLISH ONLY, min 60 words.
 - pexels_search_query: 4–6 English keywords matching the visual.
 - text: Vietnamese only.
+- **CRITICAL**: Always end "text" segments at a logical punctuation mark (.,!?). Never split a meaningful phrase (like "chúng tôi, đi làm, học tập") across segments.
 - Keep consistent visual grammar (same film style, same color grade) across segments.
 - NEVER generate a visual that contradicts or ignores the text content.
-- Return ONLY a JSON array, no other text.
+- Return ONLY a JSON object with "title" (a catchy Vietnamese title) and "segments" array.
 
-[
-  {
-    "text": "Vietnamese narration (10–15 words)...",
-    "pexels_search_query": "english keywords matching visual",
-    "visual_description": "Cinematic description that ILLUSTRATES the text content (min 60 words, English)."
-  }
-]`, topic)
+{
+  "title": "Tiêu đề video cực hay và gây tò mò",
+  "segments": [
+    {
+      "text": "Vietnamese narration (10–15 words)...",
+      "pexels_search_query": "english keywords matching visual",
+      "visual_description": "Cinematic description that ILLUSTRATES the text content (min 60 words, English)."
+    }
+  ]
+}`, topic)
 
 	result, err := gs.callGemini(prompt, 0.65, 8192)
 	if err != nil {
 		return nil, err
 	}
-	return gs.postProcessSegments(result), nil
+	result.Segments = gs.postProcessSegments(result.Segments)
+	return result, nil
 }
 
-// GenerateTikTokScript generates a short, viral TikTok script from a topic
-func (gs *GeminiService) GenerateTikTokScript(topic string) ([]VideoSegment, error) {
+func (gs *GeminiService) GenerateTikTokScript(topic string) (*GeneratedScript, error) {
 	prompt := fmt.Sprintf(`You are a viral Vietnamese TikTok director and storyteller. Write a complete 1m30s–2m TikTok script in Vietnamese about: "%s"
 
 DURATION REQUIREMENTS (NON-NEGOTIABLE — you MUST meet these):
 - MINIMUM 25 JSON segments. Target is 28-30 segments. COUNT before you output.
-- Each "text" segment: 10-16 Vietnamese words. NO shorter.
+- Each "text" segment: 10-18 Vietnamese words. NO shorter.
+- **CRITICAL**: Every segment MUST end with a punctuation mark (.,!?) to ensure natural TTS pauses. 
+- Never split a meaningful phrase (like "anh em", "gia đình") between segments.
 - Total words across ALL text segments combined: MINIMUM 280 words.
 - If you are about to stop before 25 segments, detect this and ADD MORE content.
 
@@ -163,24 +168,28 @@ CONSISTENCY: Use same color grade and film style in ALL visual_descriptions.
 
 SELF-CHECK: Before returning, count your segments. If less than 25, add more script content.
 
-Return ONLY a valid JSON array. No markdown, no explanation:
-[
-  {
-    "text": "Cau tieng Viet 10-16 tu...",
-    "pexels_search_query": "english keywords",
-    "visual_description": "Cinematic B-roll mirroring text, English, min 50 words."
-  }
-]`, topic)
+Return ONLY a valid JSON object. No markdown, no explanation:
+{
+  "title": "Tiêu đề video cực viral",
+  "segments": [
+    {
+      "text": "Cau tieng Viet 10-16 tu...",
+      "pexels_search_query": "english keywords",
+      "visual_description": "Cinematic B-roll mirroring text, English, min 50 words."
+    }
+  ]
+}`, topic)
 
 	result, err := gs.callGemini(prompt, 0.70, 8192)
 	if err != nil {
 		return nil, err
 	}
-	return gs.postProcessSegments(result), nil
+	result.Segments = gs.postProcessSegments(result.Segments)
+	return result, nil
 }
 
-// callGemini calls the Gemini API and parses response into JSON segment array
-func (gs *GeminiService) callGemini(prompt string, temperature float64, maxTokens int) ([]VideoSegment, error) {
+// callGemini calls the Gemini API and parses response into GeneratedScript
+func (gs *GeminiService) callGemini(prompt string, temperature float64, maxTokens int) (*GeneratedScript, error) {
 	if !gs.HasKeys() {
 		return nil, fmt.Errorf("no Gemini API keys configured")
 	}
@@ -215,10 +224,9 @@ func (gs *GeminiService) callGemini(prompt string, temperature float64, maxToken
 	return nil, fmt.Errorf("all %d Gemini attempts failed. Last error: %w", maxRetries, lastErr)
 }
 
-// postProcessSegments cuts Gemini's standard-length segments into smaller "fast paced" sub-segments (~10-15 words)
+// postProcessSegments cuts Gemini's standard-length segments into smaller "fast paced" sub-segments (~10-25 words)
 // and copies the VisualPrompt to each new piece. This simulates the pacing without straining the LLM.
-// It prioritizes splitting by punctuation (comma, period) to maintain grammatical flow,
-// falling back to word count if a clause is too long.
+// It prioritizes splitting by punctuation (comma, period) to maintain natural audio flow.
 func (gs *GeminiService) postProcessSegments(raw []VideoSegment) []VideoSegment {
 	var final []VideoSegment
 
@@ -228,33 +236,33 @@ func (gs *GeminiService) postProcessSegments(raw []VideoSegment) []VideoSegment 
 			continue
 		}
 
-		// Chia đoạn văn bản một cách thông minh: dựa vào dấu câu trước
+		words := strings.Fields(text)
+		// Intelligent segment splitting for long texts or those with punctuation
 		var chunks []string
 		var currentChunk strings.Builder
 		wordCount := 0
-
-		words := strings.Fields(text)
-		maxWords := 15 // Kích thước tối đa cho 1 mẩu để không quá dài
+		maxWords := 25 // Target chunk size
 
 		for i, word := range words {
 			currentChunk.WriteString(word)
 			currentChunk.WriteString(" ")
 			wordCount++
 
-			// Kiểm tra từ cuối cùng có gắn dấu chấm, phẩy...
+			// Check for punctuation at the end of the word
 			hasPunc := false
 			if len(word) > 0 {
 				lastChar := word[len(word)-1]
+				// Recognize standard sentence/clause boundaries
 				hasPunc = lastChar == '.' || lastChar == ',' || lastChar == '!' || lastChar == '?' || lastChar == ';' || lastChar == ':'
 			}
 
-			// Điều kiện ngắt thành 1 segment con:
-			// 1. Chứa dấu câu, VÀ vế này đủ dài (>= 3 chữ) để tránh các câu cụt lủn (ví dụ: "Vâng,")
-			// 2. HOẶC chứa đủ lượng token giới hạn (tránh vế dài lê thê)
-			// 3. HOẶC là từ cuối cùng của segment
 			isLastWord := i == len(words)-1
 
-			if (hasPunc && wordCount >= 3) || wordCount >= maxWords || isLastWord {
+			// Split conditions:
+			// 1. We hit a punctuation mark AND we have a decent amount of text (>= 6 words to avoid tiny fragments)
+			// 2. We are WAY over the limit (maxWords * 1.5) and MUST split at a space to prevent FPT AI issues
+			// 3. It's the end of the text
+			if (hasPunc && wordCount >= 3) || wordCount >= (maxWords+10) || isLastWord {
 				chunkText := strings.TrimSpace(currentChunk.String())
 				if chunkText != "" {
 					chunks = append(chunks, chunkText)
@@ -264,9 +272,7 @@ func (gs *GeminiService) postProcessSegments(raw []VideoSegment) []VideoSegment 
 			}
 		}
 
-		// Tạo segments
 		for _, chunkText := range chunks {
-			// Loại bỏ các dấu câu cuối dòng cũ để ép thêm vào duy nhất đúng một dấu '.' cho TTS ngắt
 			chunkText = strings.TrimRight(chunkText, ".,!?;: ")
 			if chunkText == "" {
 				continue
@@ -284,8 +290,8 @@ func (gs *GeminiService) postProcessSegments(raw []VideoSegment) []VideoSegment 
 	return final
 }
 
-// callWithKey calls Gemini and returns parsed json
-func (gs *GeminiService) callWithKey(apiKey, prompt string, temperature float64, maxTokens int) ([]VideoSegment, error) {
+// callWithKey calls Gemini and returns parsed GeneratedScript
+func (gs *GeminiService) callWithKey(apiKey, prompt string, temperature float64, maxTokens int) (*GeneratedScript, error) {
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=%s", apiKey)
 
 	// Note: We use system instructions implicitly in the prompt, or we can use the response_mime_type feature in Gemini API but raw text is fine when formatted.
@@ -346,17 +352,23 @@ func (gs *GeminiService) callWithKey(apiKey, prompt string, temperature float64,
 	// Robust JSON extraction
 	text = gs.extractJSON(text)
 
-	var segments []VideoSegment
-	if err := json.Unmarshal([]byte(text), &segments); err != nil {
+	var script GeneratedScript
+	if err := json.Unmarshal([]byte(text), &script); err != nil {
+		// Attempt to parse as array of segments for backward compatibility or LLM laziness
+		var segments []VideoSegment
+		if err2 := json.Unmarshal([]byte(text), &segments); err2 == nil {
+			log.Printf("[Gemini] LLM returned array instead of object, wrapping it")
+			return &GeneratedScript{Segments: segments}, nil
+		}
 		return nil, fmt.Errorf("failed to parse JSON script. Error: %w. Raw text: %s", err, text)
 	}
 
-	if len(segments) == 0 {
-		return nil, fmt.Errorf("parsed JSON script is empty array")
+	if len(script.Segments) == 0 {
+		return nil, fmt.Errorf("parsed JSON script has no segments")
 	}
 
-	log.Printf("[Gemini] Generated JSON script with %d segments", len(segments))
-	return segments, nil
+	log.Printf("[Gemini] Generated JSON script with %d segments and title: %q", len(script.Segments), script.Title)
+	return &script, nil
 }
 
 // GenerateImageForKeyword generates a stock-style cinematic image using gemini-2.5-flash-image.
@@ -538,7 +550,7 @@ BẮT BUỘC trả về JSON ARRAY (không có text nào khác):
 
 // GenerateSeriesPartScript generates a full video script for a single part of a series.
 // `outlines` is the full series outline for context. `partIndex` is 0-based.
-func (gs *GeminiService) GenerateSeriesPartScript(topic, platform string, outlines []SeriesPartOutline, partIndex int) ([]VideoSegment, error) {
+func (gs *GeminiService) GenerateSeriesPartScript(topic, platform string, outlines []SeriesPartOutline, partIndex int) (*GeneratedScript, error) {
 	if partIndex < 0 || partIndex >= len(outlines) {
 		return nil, fmt.Errorf("partIndex %d out of range (total %d)", partIndex, len(outlines))
 	}
@@ -610,14 +622,17 @@ LUẬT BẮT BUỘC:
 - Mỗi tập phải có kết luận TỰ HOÀN CHỈNH
 - Không sáo rỗng, không văn phong AI cứng nhắc
 
-BẮT BUỘC trả về JSON ARRAY (không có text nào khác):
-[
-  {
-    "text": "Đoạn script tiếng Việt ngắn (8-15 từ)...",
-    "pexels_search_query": "english short action keywords",
-    "visual_description": "Consistent cinematic description (UNIVERSAL GOLD STANDARD): [Consistent Subject + Physics-based Material Details] + [Detailed Action] + [Lighting/Environment] + [Ultra-sharp 8k details]."
-  }
-]
+BẮT BUỘC trả về JSON OBJECT (không có text nào khác):
+{
+  "title": "Tiêu đề tập cực hay (Vietnamese)",
+  "segments": [
+    {
+      "text": "Đoạn script tiếng Việt ngắn (8-15 từ)...",
+      "pexels_search_query": "english short action keywords",
+      "visual_description": "Consistent cinematic description (UNIVERSAL GOLD STANDARD): [Consistent Subject + Physics-based Material Details] + [Detailed Action] + [Lighting/Environment] + [Ultra-sharp 8k details]."
+    }
+  ]
+}
 
 QUY TẮC NHẤT QUÁN:
 1. LUÔN CHỌN CHỦ THỂ CỐ ĐỊNH: Nhân vật hoặc vật thể chính phải có mô tả thuộc tính vật lý cụ thể để giữ consistency.
@@ -631,15 +646,15 @@ QUY TẮC NHẤT QUÁN:
 		platformRule,
 	)
 
-	segments, err := gs.callGemini(prompt, 0.8, 8192)
+	script, err := gs.callGemini(prompt, 0.8, 8192)
 	if err != nil {
 		return nil, fmt.Errorf("series part %d script failed: %w", partIndex+1, err)
 	}
 
-	segments = gs.postProcessSegments(segments)
+	script.Segments = gs.postProcessSegments(script.Segments)
 
-	log.Printf("[Gemini] Generated script for series part %d/%d (%d sub-segments)", partIndex+1, totalParts, len(segments))
-	return segments, nil
+	log.Printf("[Gemini) Generated script for series part %d/%d (%d sub-segments)", partIndex+1, totalParts, len(script.Segments))
+	return script, nil
 }
 
 // callGeminiRaw calls Gemini and returns the raw text response (no JSON parsing).

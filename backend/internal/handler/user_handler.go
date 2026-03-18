@@ -3,6 +3,7 @@ package handler
 import (
 	"aituber/internal/dto"
 	"aituber/internal/repository"
+	"aituber/internal/service"
 	"aituber/pkg/response"
 	"net/http"
 
@@ -11,10 +12,11 @@ import (
 
 type UserHandler struct {
 	userRepo repository.UserRepository
+	authSvc  service.AuthService
 }
 
-func NewUserHandler(userRepo repository.UserRepository) *UserHandler {
-	return &UserHandler{userRepo: userRepo}
+func NewUserHandler(userRepo repository.UserRepository, authSvc service.AuthService) *UserHandler {
+	return &UserHandler{userRepo: userRepo, authSvc: authSvc}
 }
 
 // GetMe godoc
@@ -39,4 +41,27 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 		Name:          user.Name,
 		AvatarURL:     user.AvatarURL,
 	})
+}
+
+// UpdateProfile godoc
+// @Summary Update current user profile (name)
+// @Tags User
+// @Security BearerAuth
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	userID := c.GetString("user_id")
+	var req struct {
+		Name string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "invalid request body")
+		return
+	}
+
+	appErr := h.authSvc.UpdateProfile(c.Request.Context(), userID, req.Name)
+	if appErr != nil {
+		response.Fail(c, appErr.HTTPStatus, appErr.Code, appErr.Message)
+		return
+	}
+
+	response.OK(c, gin.H{"message": "profile updated"})
 }

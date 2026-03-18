@@ -38,9 +38,10 @@ type Job struct {
 	CurrentStep string `json:"current_step"`
 
 	// Output
-	VideoPath string  `json:"video_path"`
-	SavedPath string  `json:"saved_path"`
-	ErrorMsg  *string `json:"error,omitempty"`
+	VideoPath    string  `json:"video_path"`
+	SavedPath    string  `json:"saved_path"`
+	ThumbnailURL string  `json:"thumbnail_url"`
+	ErrorMsg     *string `json:"error,omitempty"`
 
 	// Relations
 	User   User    `gorm:"foreignKey:UserID" json:"-"`

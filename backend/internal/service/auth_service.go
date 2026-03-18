@@ -16,6 +16,7 @@ type AuthService interface {
 	GetOrCreateUser(ctx context.Context, walletAddress string) (*model.User, *apperror.AppError)
 	GetNonce(ctx context.Context, walletAddress string) (string, *apperror.AppError)
 	LoginWithWallet(ctx context.Context, walletAddress, signature string) (string, *model.User, *apperror.AppError)
+	UpdateProfile(ctx context.Context, userID, name string) *apperror.AppError
 }
 
 type authServiceImpl struct {
@@ -99,4 +100,37 @@ func (s *authServiceImpl) LoginWithWallet(ctx context.Context, walletAddress, si
 		return "", nil, apperror.Internal(err, "failed to generate token")
 	}
 	return token, user, nil
+}
+
+func (s *authServiceImpl) UpdateProfile(ctx context.Context, userID, name string) *apperror.AppError {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return apperror.BadRequest("name cannot be empty")
+	}
+
+	// Check for unique name
+	existing, err := s.userRepo.FindByName(ctx, name)
+	if err != nil {
+		return apperror.Internal(err, "failed to check name uniqueness")
+	}
+	if existing != nil && existing.ID != userID {
+		return apperror.BadRequest("name already taken")
+	}
+
+	// Fetch user
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return apperror.Internal(err, "failed to fetch user")
+	}
+	if user == nil {
+		return apperror.NotFound("user not found")
+	}
+
+	// Update name
+	user.Name = name
+	if err := s.userRepo.Update(ctx, user); err != nil {
+		return apperror.Internal(err, "failed to update user")
+	}
+
+	return nil
 }

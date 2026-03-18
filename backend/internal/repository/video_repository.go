@@ -29,11 +29,14 @@ func (r *videoRepository) FindByID(ctx context.Context, id string) (*model.Video
 	return &video, err
 }
 
-func (r *videoRepository) FindByUserID(ctx context.Context, userID string, page, limit int) ([]*model.Video, int64, error) {
+func (r *videoRepository) FindByUserID(ctx context.Context, userID, platform string, page, limit int) ([]*model.Video, int64, error) {
 	var videos []*model.Video
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&model.Video{}).Where("user_id = ?", userID)
+	if platform != "" {
+		query = query.Where("platform = ?", platform)
+	}
 	query.Count(&total)
 
 	offset := (page - 1) * limit
@@ -41,11 +44,14 @@ func (r *videoRepository) FindByUserID(ctx context.Context, userID string, page,
 	return videos, total, err
 }
 
-func (r *videoRepository) FindPublic(ctx context.Context, page, limit int) ([]*model.Video, int64, error) {
+func (r *videoRepository) FindPublic(ctx context.Context, platform string, page, limit int) ([]*model.Video, int64, error) {
 	var videos []*model.Video
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&model.Video{}).Where("is_public = true")
+	if platform != "" {
+		query = query.Where("platform = ?", platform)
+	}
 	query.Count(&total)
 
 	offset := (page - 1) * limit

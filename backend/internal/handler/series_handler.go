@@ -111,7 +111,7 @@ func (h *SeriesHandler) processSeriesGeneration(seriesID, userID string, req ser
 			defer wg.Done()
 
 			// Generate part script
-			segs, err := h.scriptSvc.GenerateSeriesPartScript(req.Topic, req.Platform, outlines, idx)
+			genScript, err := h.scriptSvc.GenerateSeriesPartScript(req.Topic, req.Platform, outlines, idx)
 			if err != nil {
 				log.Printf("[Series %s] Part %d script failed: %v", seriesID, idx, err)
 				return
@@ -119,6 +119,10 @@ func (h *SeriesHandler) processSeriesGeneration(seriesID, userID string, req ser
 
 			// Create part job
 			partName := fmt.Sprintf("%s - Part %d", req.ContentName, idx+1)
+			if genScript.Title != "" {
+				partName = genScript.Title
+			}
+
 			job, err := h.jobSvc.CreateSeriesPartJob(ctx, userID, seriesID, idx+1, req.Platform, partName, req.Topic, req.Voice, req.TTSProvider)
 			if err != nil {
 				log.Printf("[Series %s] Failed to create part %d job: %v", seriesID, idx, err)
@@ -135,7 +139,7 @@ func (h *SeriesHandler) processSeriesGeneration(seriesID, userID string, req ser
 				TTSProvider:   req.TTSProvider,
 				T2VModel:      req.T2VModel,
 				T2VProvider:   req.T2VProvider,
-				Segments:      segs,
+				Segments:      genScript.Segments,
 			}
 
 			// Start individual video generation workflow

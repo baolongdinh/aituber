@@ -15,12 +15,12 @@ func NewVideoService(videoRepo repository.VideoRepository) VideoService {
 	return &videoServiceImpl{videoRepo: videoRepo}
 }
 
-func (s *videoServiceImpl) GetGallery(ctx context.Context, userID string, page, limit int) ([]*model.Video, int64, error) {
-	return s.videoRepo.FindByUserID(ctx, userID, page, limit)
+func (s *videoServiceImpl) GetGallery(ctx context.Context, userID, platform string, page, limit int) ([]*model.Video, int64, error) {
+	return s.videoRepo.FindByUserID(ctx, userID, platform, page, limit)
 }
 
-func (s *videoServiceImpl) GetExplore(ctx context.Context, page, limit int) ([]*model.Video, int64, error) {
-	return s.videoRepo.FindPublic(ctx, page, limit)
+func (s *videoServiceImpl) GetExplore(ctx context.Context, platform string, page, limit int) ([]*model.Video, int64, error) {
+	return s.videoRepo.FindPublic(ctx, platform, page, limit)
 }
 
 func (s *videoServiceImpl) TogglePublic(ctx context.Context, videoID string, userID string) (bool, error) {

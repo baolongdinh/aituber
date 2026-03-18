@@ -7,32 +7,50 @@
     "origin": "STITCH",
     "deviceType": "DESKTOP",
     "screens": {
-        "index": {
+        "dashboard-tiktok": {
             "id": "2428ed9f0f4c47378371d4a69666b64d",
             "sourceScreen": "projects/2317677714841108790/screens/2428ed9f0f4c47378371d4a69666b64d",
             "x": 0,
             "y": 0,
             "width": 2560,
             "height": 2760,
-            "title": "AITuber Creator Dashboard"
+            "title": "ViralCraft TikTok Dashboard"
         },
-        "generator": {
-            "id": "25fb7410184549858524cfe4461a13da",
-            "sourceScreen": "projects/2317677714841108790/screens/25fb7410184549858524cfe4461a13da",
+        "generator-processing-tiktok": {
+            "id": "42b167c899054b04b33179db52d4965d",
+            "sourceScreen": "projects/2317677714841108790/screens/42b167c899054b04b33179db52d4965d",
             "x": 2600,
             "y": 0,
             "width": 2560,
-            "height": 2496,
-            "title": "AITuber Universal Generator"
+            "height": 2096,
+            "title": "ViralCraft TikTok Processing View"
         },
-        "job-detail": {
-            "id": "1a14c5bccf624581a98c6219145db1f0",
-            "sourceScreen": "projects/2317677714841108790/screens/1a14c5bccf624581a98c6219145db1f0",
+        "dashboard-youtube": {
+            "id": "d904352756fc48d980ed64ad0675eb0e",
+            "sourceScreen": "projects/2317677714841108790/screens/d904352756fc48d980ed64ad0675eb0e",
             "x": 5200,
             "y": 0,
             "width": 2560,
             "height": 2048,
-            "title": "AITuber Job Progress & Result View"
+            "title": "ViralCraft YouTube Dashboard"
+        },
+        "generator-youtube": {
+            "id": "52692c46d8434dc780e8180fd676c894",
+            "sourceScreen": "projects/2317677714841108790/screens/52692c46d8434dc780e8180fd676c894",
+            "x": 7800,
+            "y": 0,
+            "width": 2560,
+            "height": 2048,
+            "title": "ViralCraft YouTube Generator View"
+        },
+        "job-detail-youtube": {
+            "id": "30c8b9f1e7a4409e82d24f65b164f169",
+            "sourceScreen": "projects/2317677714841108790/screens/30c8b9f1e7a4409e82d24f65b164f169",
+            "x": 10400,
+            "y": 0,
+            "width": 2560,
+            "height": 2048,
+            "title": "ViralCraft YouTube Job Detail View"
         }
     }
 }

@@ -26,9 +26,17 @@ func (m *MockJobRepository) FindByID(ctx context.Context, id string) (*model.Job
 	return args.Get(0).(*model.Job), args.Error(1)
 }
 
-func (m *MockJobRepository) FindByUserID(ctx context.Context, userID string, page, limit int) ([]*model.Job, int64, error) {
-	args := m.Called(ctx, userID, page, limit)
+func (m *MockJobRepository) FindByUserID(ctx context.Context, userID, platform string, page, limit int) ([]*model.Job, int64, error) {
+	args := m.Called(ctx, userID, platform, page, limit)
 	return args.Get(0).([]*model.Job), args.Get(1).(int64), args.Error(2)
+}
+
+func (m *MockJobRepository) FindActiveByUserID(ctx context.Context, userID, platform string) (*model.Job, error) {
+	args := m.Called(ctx, userID, platform)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Job), args.Error(1)
 }
 
 func (m *MockJobRepository) UpdateStatus(ctx context.Context, id, status, currentStep string, progress int) error {
@@ -36,13 +44,18 @@ func (m *MockJobRepository) UpdateStatus(ctx context.Context, id, status, curren
 	return args.Error(0)
 }
 
-func (m *MockJobRepository) UpdateOutput(ctx context.Context, id, videoPath, savedPath string) error {
-	args := m.Called(ctx, id, videoPath, savedPath)
+func (m *MockJobRepository) UpdateOutput(ctx context.Context, id, videoPath, savedPath, thumbnailPath string) error {
+	args := m.Called(ctx, id, videoPath, savedPath, thumbnailPath)
 	return args.Error(0)
 }
 
 func (m *MockJobRepository) UpdateError(ctx context.Context, id, errMsg string) error {
 	args := m.Called(ctx, id, errMsg)
+	return args.Error(0)
+}
+
+func (m *MockJobRepository) UpdateTitle(ctx context.Context, id, title string) error {
+	args := m.Called(ctx, id, title)
 	return args.Error(0)
 }
 
@@ -57,6 +70,14 @@ func (m *MockSeriesRepository) Create(ctx context.Context, series *model.Series)
 
 func (m *MockSeriesRepository) FindByID(ctx context.Context, id string) (*model.Series, error) {
 	args := m.Called(ctx, id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.Series), args.Error(1)
+}
+
+func (m *MockSeriesRepository) FindActiveByUserID(ctx context.Context, userID, platform string) (*model.Series, error) {
+	args := m.Called(ctx, userID, platform)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -85,13 +106,13 @@ func (m *MockVideoRepository) FindByID(ctx context.Context, id string) (*model.V
 	return args.Get(0).(*model.Video), args.Error(1)
 }
 
-func (m *MockVideoRepository) FindByUserID(ctx context.Context, userID string, page, limit int) ([]*model.Video, int64, error) {
-	args := m.Called(ctx, userID, page, limit)
+func (m *MockVideoRepository) FindByUserID(ctx context.Context, userID, platform string, page, limit int) ([]*model.Video, int64, error) {
+	args := m.Called(ctx, userID, platform, page, limit)
 	return args.Get(0).([]*model.Video), args.Get(1).(int64), args.Error(2)
 }
 
-func (m *MockVideoRepository) FindPublic(ctx context.Context, page, limit int) ([]*model.Video, int64, error) {
-	args := m.Called(ctx, page, limit)
+func (m *MockVideoRepository) FindPublic(ctx context.Context, platform string, page, limit int) ([]*model.Video, int64, error) {
+	args := m.Called(ctx, platform, page, limit)
 	return args.Get(0).([]*model.Video), args.Get(1).(int64), args.Error(2)
 }
 

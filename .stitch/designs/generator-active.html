@@ -1,0 +1,269 @@
+<html class="dark"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#b54dff",
+            "background-light": "#f7f5f8",
+            "background-dark": "#0a0a0c",
+            "card-dark": "#121214",
+            "accent-pink": "#ff3f6c",
+          },
+          fontFamily: {
+            "display": ["Inter"]
+          },
+          borderRadius: {
+            "DEFAULT": "0.5rem",
+            "lg": "1rem",
+            "xl": "1.5rem",
+            "full": "9999px"
+          },
+        },
+      },
+    }
+  </script>
+<style>
+    .bg-radial-glow {
+      background: radial-gradient(circle at 50% 50%, rgba(181, 77, 255, 0.15) 0%, rgba(10, 10, 12, 0) 70%);
+    }
+
+    .text-gradient {
+      background: linear-gradient(to right, #a14bff, #ff3f6c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #332a3d;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen relative overflow-x-hidden">
+<div class="fixed inset-0 bg-radial-glow pointer-events-none"></div>
+<div class="relative flex flex-col min-h-screen">
+<header class="flex items-center justify-between border-b border-primary/10 bg-background-dark/50 backdrop-blur-md px-8 py-3 sticky top-0 z-50">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-2">
+<div class="size-8 bg-gradient-to-br from-primary to-accent-pink rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-xl">auto_videocam</span>
+</div>
+<h2 class="text-xl font-bold tracking-tight text-gradient">ViralCraft</h2>
+</div>
+<nav class="hidden md:flex items-center gap-6 ml-4">
+<a class="text-slate-400 hover:text-white text-sm font-medium transition-colors" href="#">AI Generator</a>
+<a class="text-slate-400 hover:text-white text-sm font-medium transition-colors" href="#">My Videos</a>
+<a class="text-slate-400 hover:text-white text-sm font-medium transition-colors" href="#">Assets</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex bg-card-dark rounded-full p-1 border border-primary/20">
+<button class="px-4 py-1.5 rounded-full text-xs font-bold bg-primary text-white flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">filter_frames</span> TikTok
+          </button>
+<button class="px-4 py-1.5 rounded-full text-xs font-bold text-slate-400 hover:text-white transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">play_circle</span> YouTube
+          </button>
+</div>
+<div class="flex items-center gap-3">
+<div class="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/20 rounded-lg">
+<span class="material-symbols-outlined text-primary text-sm">bolt</span>
+<span class="text-[10px] font-bold uppercase tracking-wider text-primary">Powered by Gemini AI</span>
+</div>
+<button class="bg-primary hover:bg-primary/90 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all">
+            Connect Wallet
+          </button>
+<div class="size-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center overflow-hidden">
+<img alt="User Avatar" class="size-full object-cover" data-alt="Abstract colorful geometric user profile avatar" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAJ6r8IJtMxlo2KdmXlwqXzgud0-T2sSgutX3HiSG8OYOXXZB5-5VuaNy5-32bb0YWy1-2PFtEcqymLAB7PamnvseIT5piDeah5sVjyVnUfmcVe8gVx3UZAbUTtpfbsO1PGqZoVC7bLMAwFf1BKL7FaC_12iHZ8ygbeeVFeqUVYiIdz54PtoHSjRhgJZMZpaQuG4Ho8lS5GYs0_TnGDCh46hrI9eU3grOctY0JDP60LWWsWxdknr1qfRwZeU443dDaTh6-Qb7O6kW0"/>
+</div>
+</div>
+</div>
+</header>
+<main class="flex-1 max-w-7xl mx-auto w-full px-8 py-8 grid grid-cols-12 gap-8">
+<div class="col-span-12 lg:col-span-5 flex flex-col gap-6">
+<div class="flex flex-col gap-1">
+<h1 class="text-2xl font-black text-slate-100">Generator Processing</h1>
+<p class="text-slate-400 text-sm">ViralCraft is crafting your series with AI precision</p>
+</div>
+<div class="bg-card-dark/60 border border-white/5 rounded-xl p-6 backdrop-blur-sm opacity-60 cursor-not-allowed">
+<div class="flex items-center justify-between mb-6">
+<h3 class="font-bold text-slate-200 flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">settings</span> Configuration
+            </h3>
+<span class="text-[10px] bg-white/10 text-slate-300 px-2 py-0.5 rounded uppercase font-bold">Read Only</span>
+</div>
+<div class="space-y-5">
+<div>
+<label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Topic Prompt</label>
+<div class="bg-background-dark border border-white/5 rounded-lg p-3 text-sm text-slate-400 min-h-[100px]">
+                Lịch sử xung đột Trung Đông và tác động của nó đến địa chính trị hiện đại...
+              </div>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Series Mode</label>
+<div class="flex items-center justify-between bg-background-dark border border-white/5 rounded-lg p-3">
+<span class="text-sm text-slate-400">9 Parts Selected</span>
+<span class="material-symbols-outlined text-primary text-sm">check_circle</span>
+</div>
+</div>
+<div>
+<label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Voice Model</label>
+<div class="flex items-center justify-between bg-background-dark border border-white/5 rounded-lg p-3">
+<span class="text-sm text-slate-400">FPT.AI - Ban Mai</span>
+<span class="material-symbols-outlined text-slate-500 text-sm">keyboard_voice</span>
+</div>
+</div>
+</div>
+<div>
+<label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Visual Style</label>
+<div class="flex gap-2">
+<div class="flex-1 h-12 rounded-lg bg-background-dark border border-white/5 flex items-center px-3 gap-2">
+<span class="material-symbols-outlined text-slate-500">palette</span>
+<span class="text-xs text-slate-400">Cinematic 4K</span>
+</div>
+<div class="flex-1 h-12 rounded-lg bg-background-dark border border-white/5 flex items-center px-3 gap-2">
+<span class="material-symbols-outlined text-slate-500">music_note</span>
+<span class="text-xs text-slate-400">Dark Ambient</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<button class="w-full bg-white/5 hover:bg-white/10 text-slate-300 font-bold py-3 rounded-xl border border-white/10 transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">dashboard</span> View Dashboard
+        </button>
+</div>
+<div class="col-span-12 lg:col-span-7 flex flex-col gap-6">
+<div class="bg-gradient-to-br from-card-dark to-background-dark border border-primary/20 rounded-2xl p-8 relative overflow-hidden shadow-2xl shadow-primary/5">
+<div class="absolute top-0 right-0 p-6">
+<div class="bg-primary/20 text-primary px-3 py-1 rounded-full text-[10px] font-black uppercase flex items-center gap-1.5 animate-pulse">
+<span class="size-1.5 rounded-full bg-primary"></span> Đang xử lý...
+            </div>
+</div>
+<div class="flex flex-col gap-6 relative z-10">
+<div class="flex items-baseline gap-4">
+<span class="text-6xl font-black text-white tracking-tighter">46%</span>
+<div class="flex flex-col">
+<span class="text-lg font-bold text-slate-200">Overall Progress</span>
+<span class="text-xs text-slate-500 italic">Estimated time remaining: 4m 12s</span>
+</div>
+</div>
+<div class="w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+<div class="h-full bg-gradient-to-right from-primary to-accent-pink w-[46%] rounded-full shadow-[0_0_15px_rgba(181,77,255,0.5)] transition-all duration-1000" style="background: linear-gradient(to right, #b54dff, #ff3f6c);"></div>
+</div>
+</div>
+</div>
+<div class="bg-card-dark/40 border border-white/5 rounded-2xl flex flex-col">
+<div class="p-6 border-b border-white/5 flex items-center justify-between">
+<h3 class="font-bold text-slate-200">Series Parts List (9)</h3>
+<span class="text-xs text-slate-500">Generation Log</span>
+</div>
+<div class="p-2 flex flex-col gap-1 custom-scrollbar max-h-[500px] overflow-y-auto">
+<div class="p-4 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between group">
+<div class="flex items-center gap-4">
+<div class="size-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-green-500">check</span>
+</div>
+<div>
+<h4 class="text-sm font-bold text-slate-200">Part 1: Bản đồ Trung Đông</h4>
+<p class="text-[10px] text-slate-500 uppercase tracking-tighter">All steps completed</p>
+</div>
+</div>
+<span class="px-2 py-1 bg-green-500/20 text-green-500 text-[10px] font-bold rounded">XONG</span>
+</div>
+<div class="p-4 rounded-xl bg-primary/10 border border-primary/20 flex flex-col gap-3">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-4">
+<div class="size-10 rounded-lg bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary animate-spin">refresh</span>
+</div>
+<div>
+<h4 class="text-sm font-bold text-slate-100">Part 2: Lịch sử cổ đại</h4>
+<p class="text-[10px] text-primary/80 font-medium">Generating audio chunks...</p>
+</div>
+</div>
+<span class="px-2 py-1 bg-primary/20 text-primary text-[10px] font-bold rounded">ĐANG CHẠY</span>
+</div>
+<div class="w-full h-1 bg-white/10 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-2/3"></div>
+</div>
+</div>
+<div class="p-4 rounded-xl border border-transparent flex items-center justify-between opacity-40">
+<div class="flex items-center gap-4">
+<div class="size-10 rounded-lg bg-white/5 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined">hourglass_empty</span>
+</div>
+<div>
+<h4 class="text-sm font-bold text-slate-400">Part 3: Thời kỳ Trung Cổ</h4>
+<p class="text-[10px] text-slate-600">Waiting in queue</p>
+</div>
+</div>
+<span class="px-2 py-1 bg-white/5 text-slate-500 text-[10px] font-bold rounded">CHỜ</span>
+</div>
+<div class="p-4 rounded-xl border border-transparent flex items-center justify-between opacity-40">
+<div class="flex items-center gap-4">
+<div class="size-10 rounded-lg bg-white/5 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined">hourglass_empty</span>
+</div>
+<div>
+<h4 class="text-sm font-bold text-slate-400">Part 4: Sự sụp đổ của Ottoman</h4>
+<p class="text-[10px] text-slate-600">Waiting in queue</p>
+</div>
+</div>
+<span class="px-2 py-1 bg-white/5 text-slate-500 text-[10px] font-bold rounded">CHỜ</span>
+</div>
+<div class="p-4 rounded-xl border border-transparent flex items-center justify-between opacity-40">
+<div class="flex items-center gap-4">
+<div class="size-10 rounded-lg bg-white/5 flex items-center justify-center text-slate-400">
+<span class="material-symbols-outlined">hourglass_empty</span>
+</div>
+<div>
+<h4 class="text-sm font-bold text-slate-400">Part 5: Chiến tranh Lạnh</h4>
+<p class="text-[10px] text-slate-600">Waiting in queue</p>
+</div>
+</div>
+<span class="px-2 py-1 bg-white/5 text-slate-500 text-[10px] font-bold rounded">CHỜ</span>
+</div>
+</div>
+<div class="p-4 bg-white/5 mt-auto rounded-b-2xl border-t border-white/5 flex items-center justify-center">
+<button class="text-xs text-slate-500 hover:text-slate-300 transition-colors font-medium flex items-center gap-1">
+              Show more parts <span class="material-symbols-outlined text-sm">expand_more</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<footer class="mt-auto border-t border-white/5 bg-background-dark/80 px-8 py-4 flex items-center justify-between">
+<div class="flex items-center gap-4">
+<span class="text-[10px] font-bold text-slate-600 uppercase">System Status</span>
+<div class="flex items-center gap-2">
+<span class="size-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]"></span>
+<span class="text-[10px] text-slate-400">GPU Clusters Online</span>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<a class="text-[10px] font-bold text-slate-600 hover:text-primary transition-colors uppercase" href="#">Terms</a>
+<a class="text-[10px] font-bold text-slate-600 hover:text-primary transition-colors uppercase" href="#">Support</a>
+<span class="text-[10px] text-slate-700">© 2024 ViralCraft AI Labs</span>
+</div>
+</footer>
+</div>
+
+```</body></html>

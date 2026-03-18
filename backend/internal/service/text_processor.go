@@ -73,8 +73,8 @@ func NewTextProcessor(audioChunkSize int, videoSegmentDuration float64) *TextPro
 	return &TextProcessor{
 		AudioChunkSize:       audioChunkSize,
 		VideoSegmentDuration: videoSegmentDuration,
-		AvgWordsPerMinute:    150.0, // Vietnamese average reading speed
-		MaxSubtitleLength:    100,
+		AvgWordsPerMinute:    160.0, // Vietnamese average reading speed
+		MaxSubtitleLength:    120,   // Increased for better phrasing
 	}
 }
 

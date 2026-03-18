@@ -29,16 +29,32 @@ func (r *jobRepository) FindByID(ctx context.Context, id string) (*model.Job, er
 	return &job, err
 }
 
-func (r *jobRepository) FindByUserID(ctx context.Context, userID string, page, limit int) ([]*model.Job, int64, error) {
+func (r *jobRepository) FindByUserID(ctx context.Context, userID, platform string, page, limit int) ([]*model.Job, int64, error) {
 	var jobs []*model.Job
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&model.Job{}).Where("user_id = ?", userID)
+	if platform != "" {
+		query = query.Where("platform = ?", platform)
+	}
 	query.Count(&total)
 
 	offset := (page - 1) * limit
 	err := query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&jobs).Error
 	return jobs, total, err
+}
+func (r *jobRepository) FindActiveByUserID(ctx context.Context, userID, platform string) (*model.Job, error) {
+	var job model.Job
+	query := r.db.WithContext(ctx).
+		Where("user_id = ? AND status IN ?", userID, []string{"processing", "queued"})
+	if platform != "" {
+		query = query.Where("platform = ?", platform)
+	}
+	err := query.Order("created_at DESC").First(&job).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &job, err
 }
 
 func (r *jobRepository) UpdateStatus(ctx context.Context, id, status, currentStep string, progress int) error {
@@ -51,14 +67,15 @@ func (r *jobRepository) UpdateStatus(ctx context.Context, id, status, currentSte
 		}).Error
 }
 
-func (r *jobRepository) UpdateOutput(ctx context.Context, id, videoPath, savedPath string) error {
+func (r *jobRepository) UpdateOutput(ctx context.Context, id, videoPath, savedPath, thumbnailPath string) error {
 	return r.db.WithContext(ctx).Model(&model.Job{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
-			"video_path": videoPath,
-			"saved_path": savedPath,
-			"status":     "completed",
-			"progress":   100,
+			"video_path":    videoPath,
+			"saved_path":    savedPath,
+			"thumbnail_url": thumbnailPath,
+			"status":        "completed",
+			"progress":      100,
 		}).Error
 }
 
@@ -69,6 +86,10 @@ func (r *jobRepository) UpdateError(ctx context.Context, id, errMsg string) erro
 			"status":    "failed",
 			"error_msg": errMsg,
 		}).Error
+}
+
+func (r *jobRepository) UpdateTitle(ctx context.Context, id, title string) error {
+	return r.db.WithContext(ctx).Model(&model.Job{}).Where("id = ?", id).Update("content_name", title).Error
 }
 
 // SeriesRepository implementation
@@ -97,4 +118,18 @@ func (r *seriesRepository) UpdateStatus(ctx context.Context, id, status string) 
 	return r.db.WithContext(ctx).Model(&model.Series{}).
 		Where("id = ?", id).
 		Update("status", status).Error
+}
+func (r *seriesRepository) FindActiveByUserID(ctx context.Context, userID, platform string) (*model.Series, error) {
+	var series model.Series
+	query := r.db.WithContext(ctx).
+		Preload("Jobs").
+		Where("user_id = ? AND status = ?", userID, "processing")
+	if platform != "" {
+		query = query.Where("platform = ?", platform)
+	}
+	err := query.Order("created_at DESC").First(&series).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &series, err
 }

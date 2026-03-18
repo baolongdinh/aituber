@@ -442,9 +442,9 @@ func ConcatVideos(inputFiles []string, outputPath string) error {
 	filterParts := []string{}
 
 	for i := 0; i < len(inputFiles); i++ {
-		// Normalize video: scale to 1920x1080, setsar 1, fps 30, format yuv420p
-		// Use force_original_aspect_ratio to keep aspect ratio and pad to fill
-		vNorm := fmt.Sprintf("[%d:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v%d]", i, i)
+		// Premium scaling: force_original_aspect_ratio=increase then crop to exact resolution
+		// This avoids black bars and looks much more professional
+		vNorm := fmt.Sprintf("[%d:v]scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,fps=30,format=yuv420p[v%d]", i, i)
 		// Normalize audio: sample rate 44100, stereo
 		aNorm := fmt.Sprintf("[%d:a]aformat=sample_rates=44100:channel_layouts=stereo[a%d]", i, i)
 
@@ -473,6 +473,18 @@ func ConcatVideos(inputFiles []string, outputPath string) error {
 		"-y", outputPath,
 	)
 
+	return RunFFmpegCommand(args)
+}
+
+// ExtractThumbnail extracts a single frame from video at specified time
+func ExtractThumbnail(videoPath, outputPath string, timeOffset float64) error {
+	args := []string{
+		"-ss", fmt.Sprintf("%.3f", timeOffset),
+		"-i", videoPath,
+		"-vframes", "1",
+		"-q:v", "2", // High quality
+		"-y", outputPath,
+	}
 	return RunFFmpegCommand(args)
 }
 

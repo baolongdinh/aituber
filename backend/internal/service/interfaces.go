@@ -14,6 +14,11 @@ type VideoSegment struct {
 	VisualDescription string  `json:"visual_description"`
 }
 
+type GeneratedScript struct {
+	Title    string         `json:"title"`
+	Segments []VideoSegment `json:"segments"`
+}
+
 type GenerateRequest struct {
 	Platform      string         `json:"platform"`
 	Topic         string         `json:"topic"`
@@ -69,10 +74,10 @@ type IVideoWorkflow interface {
 
 // IScriptGenerator defines the interface for generating scripts using AI
 type IScriptGenerator interface {
-	GenerateYouTubeScript(topic string) ([]VideoSegment, error)
-	GenerateTikTokScript(topic string) ([]VideoSegment, error)
+	GenerateYouTubeScript(topic string) (*GeneratedScript, error)
+	GenerateTikTokScript(topic string) (*GeneratedScript, error)
 	GenerateSeriesOutline(topic, platform string, numParts int) ([]SeriesPartOutline, error)
-	GenerateSeriesPartScript(topic, platform string, outline []SeriesPartOutline, partIdx int) ([]VideoSegment, error)
+	GenerateSeriesPartScript(topic, platform string, outline []SeriesPartOutline, partIdx int) (*GeneratedScript, error)
 	HasKeys() bool
 }
 
@@ -94,6 +99,7 @@ type IStockVideoService interface {
 type IComposerService interface {
 	ComposeVideoWithAudio(videoPath, audioPath, outputPath string) error
 	ConcatVideos(videoPaths []string, outputPath string) error
+	ExtractThumbnail(videoPath, outputPath string, timeOffset float64) error
 }
 
 // IVideoProcessor handles low level video manipulation (renamed from legacy VideoService)
@@ -107,20 +113,22 @@ type IVideoProcessor interface {
 type JobService interface {
 	CreateJob(ctx context.Context, userID, platform, contentName, topic, voice, ttsProvider string) (*model.Job, error)
 	GetJob(ctx context.Context, jobID string) (*model.Job, error)
-	ListUserJobs(ctx context.Context, userID string, page, limit int) ([]*model.Job, int64, error)
+	ListUserJobs(ctx context.Context, userID, platform string, page, limit int) ([]*model.Job, int64, error)
 	UpdateProgress(ctx context.Context, jobID, step string, progress int) error
 	MarkFailed(ctx context.Context, jobID string, err error) error
-	MarkCompleted(ctx context.Context, jobID, videoPath, savedPath string) error
+	MarkCompleted(ctx context.Context, jobID, videoPath, savedPath, thumbnailPath string) error
 	CreateSeries(ctx context.Context, userID, topic, platform, contentName string, numParts int) (*model.Series, error)
 	GetSeries(ctx context.Context, seriesID string) (*model.Series, error)
 	UpdateSeriesStatus(ctx context.Context, seriesID, status string) error
 	CreateSeriesPartJob(ctx context.Context, userID, seriesID string, partIndex int, platform, contentName, topic, voice, ttsProvider string) (*model.Job, error)
+	GetActiveTask(ctx context.Context, userID, platform string) (*model.Job, *model.Series, error)
+	UpdateJobTitle(ctx context.Context, jobID, title string) error
 }
 
 // VideoService handles video gallery and explore features
 type VideoService interface {
-	GetGallery(ctx context.Context, userID string, page, limit int) ([]*model.Video, int64, error)
-	GetExplore(ctx context.Context, page, limit int) ([]*model.Video, int64, error)
+	GetGallery(ctx context.Context, userID, platform string, page, limit int) ([]*model.Video, int64, error)
+	GetExplore(ctx context.Context, platform string, page, limit int) ([]*model.Video, int64, error)
 	TogglePublic(ctx context.Context, videoID string, userID string) (bool, error)
 	GetVideo(ctx context.Context, videoID string) (*model.Video, error)
 }

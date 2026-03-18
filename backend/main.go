@@ -51,6 +51,10 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Serve static files from OutputDir
+	r.Static("/ai-videos", cfg.OutputDir)
+	log.Printf("Serving static files from: %s", cfg.OutputDir)
+
 	// --- SETUP DEPENDENCY INJECTION ---
 	// 1. Repositories
 	userRepo := repository.NewUserRepository(db)

@@ -36,7 +36,7 @@ func Setup(r *gin.Engine, c RouterConfig) {
 
 	// Handlers
 	authHandler := handler.NewAuthHandler(authSvc)
-	userHandler := handler.NewUserHandler(userRepo)
+	userHandler := handler.NewUserHandler(userRepo, authSvc)
 	videoHandler := handler.NewVideoHandler(c.Cfg, videoSvc, c.JobSvc, c.Workflow, c.ScriptSvc)
 	seriesHandler := handler.NewSeriesHandler(c.Cfg, c.JobSvc, videoSvc, c.Workflow, c.ScriptSvc)
 
@@ -64,6 +64,7 @@ func Setup(r *gin.Engine, c RouterConfig) {
 		{
 			// User Profile
 			protected.GET("/me", userHandler.GetMe)
+			protected.PUT("/me/profile", userHandler.UpdateProfile)
 
 			// Generation
 			protected.POST("/generate", videoHandler.Generate)
@@ -71,6 +72,7 @@ func Setup(r *gin.Engine, c RouterConfig) {
 
 			// Tasks & Gallery
 			protected.GET("/me/tasks", videoHandler.GetMyTasks)
+			protected.GET("/me/active-task", videoHandler.GetActiveTask)
 			protected.GET("/me/videos", videoHandler.GetMyVideos)
 			protected.GET("/status/:job_id", videoHandler.GetStatus)
 			protected.POST("/videos/:id/publish", videoHandler.TogglePublish)

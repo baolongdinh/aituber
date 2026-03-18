@@ -44,7 +44,7 @@ func (m *MockJobManager) GetJob(ctx context.Context, jobID string) (*model.Job, 
 	}, nil
 }
 
-func (m *MockJobManager) ListUserJobs(ctx context.Context, userID string, page, limit int) ([]*model.Job, int64, error) {
+func (m *MockJobManager) ListUserJobs(ctx context.Context, userID, platform string, page, limit int) ([]*model.Job, int64, error) {
 	return nil, 0, nil
 }
 
@@ -61,7 +61,7 @@ func (m *MockJobManager) MarkFailed(ctx context.Context, jobID string, err error
 	return nil
 }
 
-func (m *MockJobManager) MarkCompleted(ctx context.Context, jobID, videoPath, savedPath string) error {
+func (m *MockJobManager) MarkCompleted(ctx context.Context, jobID, videoPath, savedPath, thumbnailPath string) error {
 	m.VideoPath = videoPath
 	m.SavedPath = savedPath
 	m.Finished <- true
@@ -89,23 +89,31 @@ func (m *MockJobManager) CreateSeriesPartJob(ctx context.Context, userID, series
 	}, nil
 }
 
+func (m *MockJobManager) GetActiveTask(ctx context.Context, userID, platform string) (*model.Job, *model.Series, error) {
+	return nil, nil, nil
+}
+
+func (m *MockJobManager) UpdateJobTitle(ctx context.Context, jobID, title string) error {
+	return nil
+}
+
 type MockGeminiService struct {
 	Segments []VideoSegment
 	Err      error
 }
 
-func (m *MockGeminiService) GenerateYouTubeScript(topic string) ([]VideoSegment, error) {
-	return m.Segments, m.Err
+func (m *MockGeminiService) GenerateYouTubeScript(topic string) (*GeneratedScript, error) {
+	return &GeneratedScript{Segments: m.Segments, Title: "AI Title"}, m.Err
 }
-func (m *MockGeminiService) GenerateTikTokScript(topic string) ([]VideoSegment, error) {
-	return m.Segments, m.Err
+func (m *MockGeminiService) GenerateTikTokScript(topic string) (*GeneratedScript, error) {
+	return &GeneratedScript{Segments: m.Segments, Title: "AI Title"}, m.Err
 }
 func (m *MockGeminiService) HasKeys() bool { return true }
 func (m *MockGeminiService) GenerateSeriesOutline(topic, platform string, numParts int) ([]SeriesPartOutline, error) {
 	return nil, nil
 }
-func (m *MockGeminiService) GenerateSeriesPartScript(topic, platform string, outline []SeriesPartOutline, partIdx int) ([]VideoSegment, error) {
-	return nil, nil
+func (m *MockGeminiService) GenerateSeriesPartScript(topic, platform string, outline []SeriesPartOutline, partIdx int) (*GeneratedScript, error) {
+	return &GeneratedScript{Segments: m.Segments, Title: "Part Title"}, m.Err
 }
 
 type MockAudioService struct {
@@ -150,6 +158,10 @@ func (m *MockComposerService) ComposeVideoWithAudio(videoPath, audioPath, output
 }
 
 func (m *MockComposerService) ConcatVideos(videoPaths []string, outputPath string) error {
+	return m.Err
+}
+
+func (m *MockComposerService) ExtractThumbnail(videoPath, outputPath string, timeOffset float64) error {
 	return m.Err
 }
 

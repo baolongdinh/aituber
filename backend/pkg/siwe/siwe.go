@@ -22,7 +22,7 @@ func GenerateNonce() (string, error) {
 // BuildMessage returns the SIWE message that the frontend must sign
 func BuildMessage(address, nonce string) string {
 	return fmt.Sprintf(
-		"Sign in to AITuber\nWallet: %s\nNonce: %s\n\nThis request will not trigger a blockchain transaction or cost any gas fees.",
+		"Chào mừng bạn đến với ViralCraft!\n\nĐịa chỉ ví: %s\nNonce: %s",
 		strings.ToLower(address),
 		nonce,
 	)

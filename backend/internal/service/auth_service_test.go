@@ -36,9 +36,22 @@ func (m *MockUserRepository) Create(ctx context.Context, user *model.User) error
 	return args.Error(0)
 }
 
+func (m *MockUserRepository) Update(ctx context.Context, user *model.User) error {
+	args := m.Called(ctx, user)
+	return args.Error(0)
+}
+
 func (m *MockUserRepository) UpdateNonce(ctx context.Context, id, nonce string) error {
 	args := m.Called(ctx, id, nonce)
 	return args.Error(0)
+}
+
+func (m *MockUserRepository) FindByName(ctx context.Context, name string) (*model.User, error) {
+	args := m.Called(ctx, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*model.User), args.Error(1)
 }
 
 func TestAuthService_GetNonce(t *testing.T) {

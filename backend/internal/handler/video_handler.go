@@ -37,10 +37,11 @@ func NewVideoHandler(cfg *config.Config, videoSvc service.VideoService, jobSvc s
 // @Tags Gallery
 func (h *VideoHandler) GetMyVideos(c *gin.Context) {
 	userID := c.GetString("user_id")
+	platform := c.Query("platform")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	videos, total, err := h.videoSvc.GetGallery(c.Request.Context(), userID, page, limit)
+	videos, total, err := h.videoSvc.GetGallery(c.Request.Context(), userID, platform, page, limit)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to fetch gallery")
 		return
@@ -59,10 +60,11 @@ func (h *VideoHandler) GetMyVideos(c *gin.Context) {
 // @Tags Gallery
 func (h *VideoHandler) GetMyTasks(c *gin.Context) {
 	userID := c.GetString("user_id")
+	platform := c.Query("platform")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
 
-	jobs, total, err := h.jobSvc.ListUserJobs(c.Request.Context(), userID, page, limit)
+	jobs, total, err := h.jobSvc.ListUserJobs(c.Request.Context(), userID, platform, page, limit)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to fetch tasks")
 		return
@@ -96,10 +98,11 @@ func (h *VideoHandler) TogglePublish(c *gin.Context) {
 // @Summary Get public explore feed
 // @Tags Explore
 func (h *VideoHandler) GetExplore(c *gin.Context) {
+	platform := c.Query("platform")
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 
-	videos, total, err := h.videoSvc.GetExplore(c.Request.Context(), page, limit)
+	videos, total, err := h.videoSvc.GetExplore(c.Request.Context(), platform, page, limit)
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to fetch explore feed")
 		return
@@ -111,6 +114,40 @@ func (h *VideoHandler) GetExplore(c *gin.Context) {
 		Total:      total,
 		TotalPages: int((total + int64(limit) - 1) / int64(limit)),
 	})
+}
+
+// GetActiveTask godoc
+// @Summary Get user's current pending task (job or series)
+// @Tags Gallery
+func (h *VideoHandler) GetActiveTask(c *gin.Context) {
+	userID := c.GetString("user_id")
+	platform := c.Query("platform")
+
+	job, series, err := h.jobSvc.GetActiveTask(c.Request.Context(), userID, platform)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to fetch active task")
+		return
+	}
+
+	if series != nil {
+		response.OK(c, gin.H{
+			"type":      "series",
+			"series_id": series.ID,
+			"status":    series.Status,
+		})
+		return
+	}
+
+	if job != nil {
+		response.OK(c, gin.H{
+			"type":   "job",
+			"job_id": job.ID,
+			"status": job.Status,
+		})
+		return
+	}
+
+	response.OK(c, gin.H{"type": "none"})
 }
 
 // Generate handles POST /api/v1/generate
@@ -178,8 +215,10 @@ func (h *VideoHandler) GetStatus(c *gin.Context) {
 		"current_step": job.CurrentStep,
 	}
 	if job.Status == "completed" {
+		resp["video_url"] = job.SavedPath
 		resp["video_path"] = job.VideoPath
 		resp["saved_path"] = job.SavedPath
+		resp["thumbnail_url"] = job.ThumbnailURL
 	}
 	if job.Status == "failed" && job.ErrorMsg != nil {
 		resp["error"] = *job.ErrorMsg
