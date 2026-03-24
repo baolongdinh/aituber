@@ -600,16 +600,16 @@ onUnmounted(() => {
 .platform-chip.tiktok { color: #a14bff; }
 .platform-chip.youtube { color: #ff0000; }
 .page-title { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 8px; }
-.page-subtitle { color: rgba(255,255,255,0.4); font-size: 1.1rem; }
+.page-subtitle { color: rgba(255, 255, 255, 0.568); font-size: 1.1rem; }
 
 /* FORM REFINEMENT */
 .generator-form-refined { display: flex; flex-direction: column; gap: 40px; }
 .form-group-lux { display: flex; flex-direction: column; gap: 14px; }
 .label-industrial {
-  font-size: 0.65rem; font-weight: 800; color: rgba(255,255,255,0.2); letter-spacing: 0.15em;
+  font-size: 0.65rem; font-weight: 800; color: rgba(255, 255, 255, 0.466); letter-spacing: 0.15em;
   display: flex; align-items: center; gap: 10px;
 }
-.label-industrial span { opacity: 0.5; font-family: 'JetBrains Mono', monospace; }
+.label-industrial span { opacity: 0.8; font-family: 'JetBrains Mono', monospace; }
 
 .textarea-refined {
   background: #0d0d0e; border: 1px solid rgba(255,255,255,0.05); border-radius: 20px;
@@ -639,7 +639,7 @@ onUnmounted(() => {
   padding: 16px 20px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.6);
+  color: rgba(255,255,255,0.8);
   font-size: 0.85rem;
   font-weight: 600;
   border-radius: 12px;
@@ -690,7 +690,7 @@ onUnmounted(() => {
 
 .provider-count {
   font-size: 0.7rem;
-  opacity: 0.7;
+  opacity: 0.9;
   font-weight: 500;
 }
 
@@ -753,7 +753,7 @@ onUnmounted(() => {
 .batch-label {
   font-size: 0.7rem;
   font-weight: 800;
-  color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.6);
   letter-spacing: 0.1em;
 }
 
@@ -777,16 +777,16 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
-.indicator-dot:nth-child(1) { background: rgba(255,255,255,0.6); }
-.indicator-dot:nth-child(2) { background: rgba(255,255,255,0.5); }
-.indicator-dot:nth-child(3) { background: rgba(255,255,255,0.4); }
-.indicator-dot:nth-child(4) { background: rgba(255,255,255,0.3); }
-.indicator-dot:nth-child(5) { background: rgba(255,255,255,0.2); }
+.indicator-dot:nth-child(1) { background: rgba(255,255,255,0.8); }
+.indicator-dot:nth-child(2) { background: rgba(255,255,255,0.7); }
+.indicator-dot:nth-child(3) { background: rgba(255,255,255,0.6); }
+.indicator-dot:nth-child(4) { background: rgba(255,255,255,0.5); }
+.indicator-dot:nth-child(5) { background: rgba(255,255,255,0.4); }
 
 .indicator-more {
   font-size: 0.6rem;
   font-weight: 600;
-  color: rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.5);
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -912,8 +912,8 @@ onUnmounted(() => {
 
 /* HISTORY STACK */
 .section-label-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding: 0 4px; }
-.section-label-header h3 { font-size: 0.75rem; font-weight: 800; opacity: 0.3; letter-spacing: 0.1em; }
-.btn-icon-refined { background: transparent; border: none; color: #fff; opacity: 0.2; cursor: pointer; transition: 0.3s; }
+.section-label-header h3 { font-size: 0.75rem; font-weight: 800; opacity: 0.5; letter-spacing: 0.1em; }
+.btn-icon-refined { background: transparent; border: none; color: #fff; opacity: 0.4; cursor: pointer; transition: 0.3s; }
 .btn-icon-refined:hover { opacity: 1; transform: rotate(180deg); }
 
 .history-card-v3 {
@@ -926,7 +926,7 @@ onUnmounted(() => {
 .status-indicator.processing { background: #3b82f6; animation: soft-pulse 2s infinite; }
 
 .history-title-v3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
-.history-meta-v3 { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; opacity: 0.3; font-weight: 600; }
+.history-meta-v3 { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; opacity: 0.5; font-weight: 600; }
 .history-meta-v3 .dot { width: 2px; height: 2px; background: currentColor; border-radius: 50%; opacity: 0.5; }
 
 .action-btn-v3 {
@@ -935,7 +935,7 @@ onUnmounted(() => {
 }
 .action-btn-v3:hover { background: #fff; color: #000; border-color: #fff; }
 
-.tag-series { font-size: 0.6rem; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; opacity: 0.4; }
+.tag-series { font-size: 0.6rem; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; opacity: 0.6; }
 
 @keyframes soft-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
