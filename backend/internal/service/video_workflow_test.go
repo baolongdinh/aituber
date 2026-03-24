@@ -97,6 +97,14 @@ func (m *MockJobManager) UpdateJobTitle(ctx context.Context, jobID, title string
 	return nil
 }
 
+func (m *MockJobManager) SaveCheckpoint(ctx context.Context, jobID string, checkpoint *model.JobCheckpoint) error {
+	return nil
+}
+
+func (m *MockJobManager) GetCheckpoint(ctx context.Context, jobID string) (*model.JobCheckpoint, error) {
+	return nil, nil
+}
+
 type MockGeminiService struct {
 	Segments []VideoSegment
 	Err      error

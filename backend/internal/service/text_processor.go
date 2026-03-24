@@ -222,97 +222,73 @@ func (tp *TextProcessor) splitByClauses(text string, limit int) []string {
 
 // smartSplit splits a long text intelligently based on punctuation priorities
 func (tp *TextProcessor) smartSplit(text string, limit int) []string {
-	var chunks []string
-	remaining := text
+	if len(text) <= limit {
+		return []string{text}
+	}
 
-	for len(remaining) > limit {
-		// Find the best split point within the limit
-		// We look backwards from the limit to find the first suitable split point
-		splitIdx := -1
-
-		// Search range: we want to find a split point roughly between limit/3 and limit
-		// to avoid creating too many tiny chunks, but priority is validity (< limit)
-		searchStart := limit / 3
-		if searchStart < 0 {
-			searchStart = 0
-		}
-
-		// 1. Try splitting at major punctuation (comma, semicolon, colon, etc.)
-		// Priority: ; : , - — .
-		punctuations := []string{";", ":", ",", " - ", " — ", "."}
-		bestPuncIdx := -1
-
-		// Helper to find punctuation in a range
-		findPunc := func(start, end int) int {
-			localBestIdx := -1
-			for _, punc := range punctuations {
-				// Find LAST occurrence of this punctuation within range
-				// Extract substring to search in
-				if start >= end {
-					continue
-				}
-				searchArea := remaining[start:end]
-
-				if idx := strings.LastIndex(searchArea, punc); idx != -1 {
-					// absolute index = start + idx + length of punctuation
-					actualIdx := start + idx + len(punc)
-
-					// Keep punctuation with the preceding chunk usually, or split after it
-					if actualIdx > localBestIdx {
-						localBestIdx = actualIdx
-					}
-				}
+	// Priority 1: Semantic punctuation (semicolon, colon, comma, dash)
+	// We check for these in reverse order of severity to find the "softest" good split point near the limit
+	delimiters := []string{"; ", ": ", ", ", " - ", " – ", " — "}
+	for _, d := range delimiters {
+		idx := strings.LastIndex(text[:limit], d)
+		if idx > 0 {
+			// Include the delimiter in the first part
+			part1 := strings.TrimSpace(text[:idx+len(d)])
+			part2 := strings.TrimSpace(text[idx+len(d):])
+			res := []string{part1}
+			if len(part2) > 0 {
+				res = append(res, tp.smartSplit(part2, limit)...)
 			}
-			return localBestIdx
+			return res
+		}
+	}
+
+	// Priority 2: Word boundaries (spaces)
+	// For Vietnamese, we want to avoid splitting between very short words (compound words like "anh em")
+	words := strings.Fields(text)
+	if len(words) <= 1 {
+		// Single word too long, hard split
+		return []string{text[:limit], text[limit:]}
+	}
+
+	current := ""
+	var result []string
+	for i, w := range words {
+		// If adding this word exceeds limit
+		if len(current)+len(w)+1 > limit {
+			if current == "" {
+				// Rare case: first word is too long
+				result = append(result, w[:limit])
+				remaining := w[limit:]
+				if i < len(words)-1 {
+					remaining += " " + strings.Join(words[i+1:], " ")
+				}
+				result = append(result, tp.smartSplit(strings.TrimSpace(remaining), limit)...)
+				return result
+			}
+
+			// Save current accumulated chunk
+			result = append(result, strings.TrimSpace(current))
+
+			// Start new accumulation with current word
+			// We check the rest recursively
+			remaining := strings.Join(words[i:], " ")
+			result = append(result, tp.smartSplit(strings.TrimSpace(remaining), limit)...)
+			return result
 		}
 
-		// First pass: Try preferred range [limit/3, limit]
-		limitIdx := limit
-		if limitIdx > len(remaining) {
-			limitIdx = len(remaining)
-		}
-		bestPuncIdx = findPunc(searchStart, limitIdx)
-
-		// Second pass: If no punctuation found in preferred range, try [0, limit/3]
-		// This prevents "hard splits" when punctuation is only at the start
-		if bestPuncIdx == -1 {
-			bestPuncIdx = findPunc(0, searchStart)
-		}
-
-		if bestPuncIdx != -1 {
-			splitIdx = bestPuncIdx
+		if current == "" {
+			current = w
 		} else {
-			// 2. Fallback: Split at logical phrase boundaries (spaces)
-			// Find last space before limit
-			limitIdx := limit
-			if limitIdx > len(remaining) {
-				limitIdx = len(remaining)
-			}
-
-			lastSpace := strings.LastIndex(remaining[:limitIdx], " ")
-			if lastSpace != -1 {
-				splitIdx = lastSpace
-			} else {
-				// 3. Last Resort: Hard split at limit
-				splitIdx = limit
-			}
+			current += " " + w
 		}
-
-		// Perform the split
-		chunk := strings.TrimSpace(remaining[:splitIdx])
-		if chunk != "" {
-			chunks = append(chunks, chunk)
-		}
-
-		remaining = strings.TrimSpace(remaining[splitIdx:])
 	}
 
-	// Append the rest
-	if remaining != "" {
-		chunks = append(chunks, remaining)
+	if current != "" {
+		result = append(result, strings.TrimSpace(current))
 	}
 
-	return chunks
+	return result
 }
 
 // ExtractKeywordsFromText extracts meaningful keywords from a text segment for use as a Pexels search query.

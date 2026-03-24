@@ -2,6 +2,7 @@ package service
 
 import (
 	"aituber/config"
+	"aituber/internal/model"
 	"aituber/utils"
 	"context"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 	"sync"
 )
 
-// VideoWorkflowService orchestrates the entire video creation pipeline
 type VideoWorkflowService struct {
 	cfg               *config.Config
 	jobSvc            JobService
@@ -21,6 +21,7 @@ type VideoWorkflowService struct {
 	stockVideoService IStockVideoService
 	composerService   IComposerService
 	geminiService     IScriptGenerator
+	activeJobs        sync.Map // map[string]context.CancelFunc
 }
 
 // NewVideoWorkflowService initializes workflow service with all bounded contexts
@@ -48,36 +49,79 @@ func NewVideoWorkflowService(
 
 // StartGeneration kicks off background video generation pipeline
 func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest) {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	s.activeJobs.Store(jobID, cancel)
+	defer s.activeJobs.Delete(jobID)
+
+	// 0. Load or Initialize Checkpoint
+	checkpoint, err := s.jobSvc.GetCheckpoint(ctx, jobID)
+	if err != nil {
+		log.Printf("[Job %s] Warning: failed to load checkpoint: %v", jobID, err)
+	}
+
+	if checkpoint == nil {
+		checkpoint = &model.JobCheckpoint{
+			JobID:       jobID,
+			Platform:    req.Platform,
+			Voice:       req.Voice,
+			TTSProvider: req.TTSProvider,
+			T2VModel:    req.T2VModel,
+			T2VProvider: req.T2VProvider,
+		}
+	}
+
 	s.jobSvc.UpdateProgress(ctx, jobID, "Creating temporary directories", 3)
 
-	tempDir, err := utils.CreateTempDir(s.cfg.TempDir, jobID)
-	if err != nil {
-		s.jobSvc.MarkFailed(ctx, jobID, fmt.Errorf("failed to create temp dir: %w", err))
-		return
+	tempDir := checkpoint.TempDir
+	if tempDir == "" {
+		tempDir, err = utils.CreateTempDir(s.cfg.TempDir, jobID)
+		if err != nil {
+			s.jobSvc.MarkFailed(ctx, jobID, fmt.Errorf("failed to create temp dir: %w", err))
+			return
+		}
+		checkpoint.TempDir = tempDir
+		s.jobSvc.SaveCheckpoint(ctx, jobID, checkpoint)
 	}
 
 	orientation := "landscape"
-	if req.Platform == "tiktok" {
+	if checkpoint.Platform == "tiktok" {
 		orientation = "portrait"
 	}
+	checkpoint.Orientation = orientation
 
 	// 1. Script Generation
-	segments, aiTitle, err := s.generateScript(ctx, jobID, req)
-	if err != nil {
-		s.jobSvc.MarkFailed(ctx, jobID, err)
-		return
-	}
+	if len(checkpoint.Segments) == 0 {
+		segments, aiTitle, err := s.generateScript(ctx, jobID, req)
+		if err != nil {
+			s.jobSvc.MarkFailed(ctx, jobID, err)
+			return
+		}
 
-	// Update job title if AI generated a better one
-	if aiTitle != "" {
-		s.jobSvc.UpdateJobTitle(ctx, jobID, aiTitle)
-		req.ContentName = aiTitle // Use it for folder naming too if needed, or keep original slug
+		// Update job title if AI generated a better one
+		if aiTitle != "" {
+			s.jobSvc.UpdateJobTitle(ctx, jobID, aiTitle)
+			checkpoint.Title = aiTitle
+		} else if req.ContentName != "" {
+			checkpoint.Title = req.ContentName
+		}
+
+		// Initialize segments in checkpoint
+		for i, seg := range segments {
+			checkpoint.Segments = append(checkpoint.Segments, model.CheckpointSegment{
+				Index:             i,
+				Text:              seg.Text,
+				VisualPrompt:      seg.VisualPrompt,
+				VisualDescription: seg.VisualDescription,
+			})
+		}
+		s.jobSvc.SaveCheckpoint(ctx, jobID, checkpoint)
 	}
 
 	// 2. Parallel Segment Processing (Audio + Fetch Source Material)
 	s.jobSvc.UpdateProgress(ctx, jobID, "Processing segments in parallel", 10)
-	numSegments := len(segments)
+	numSegments := len(checkpoint.Segments)
 	audioPaths := make([]string, numSegments)
 	audioTexts := make([]string, numSegments)
 	segmentVideoPaths := make([]string, numSegments)
@@ -85,11 +129,28 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest
 
 	sem := make(chan struct{}, s.cfg.MaxConcurrentTTSRequests)
 	var wg sync.WaitGroup
+	var cpMu sync.Mutex
 
-	for i, seg := range segments {
+	for i := range checkpoint.Segments {
 		wg.Add(1)
-		go func(index int, sSeg VideoSegment) {
+		go func(index int) {
 			defer wg.Done()
+
+			cpMu.Lock()
+			seg := &checkpoint.Segments[index]
+			if seg.AudioDone && seg.VideoDone {
+				audioPaths[index] = seg.AudioPath
+				audioTexts[index] = seg.Text
+				segmentVideoPaths[index] = seg.VideoPath
+				cpMu.Unlock()
+				return
+			}
+			checkpointVoice := checkpoint.Voice
+			checkpointOrientation := checkpoint.Orientation
+			checkpointT2VModel := checkpoint.T2VModel
+			checkpointT2VProvider := checkpoint.T2VProvider
+			cpMu.Unlock()
+
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -100,17 +161,34 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest
 			var mErr error
 			var wgSub sync.WaitGroup
 
-			wgSub.Add(2)
-			go func() {
-				defer wgSub.Done()
-				aPath, aErr = s.audioService.GenerateSingleAudio(sSeg.Text, req.Voice, -0.5, jobID, index)
-			}()
-			go func() {
-				defer wgSub.Done()
-				material, mErr = s.stockVideoService.FetchSourceMaterial(context.Background(), sSeg.VisualPrompt, sSeg.VisualDescription, req.T2VModel, req.T2VProvider, jobID, index, orientation)
-			}()
+			audioNeeded := false
+			videoNeeded := false
+
+			cpMu.Lock()
+			if !seg.AudioDone {
+				audioNeeded = true
+			}
+			if !seg.VideoDone {
+				videoNeeded = true
+			}
+			cpMu.Unlock()
+
+			if audioNeeded {
+				wgSub.Add(1)
+				go func() {
+					defer wgSub.Done()
+					aPath, aErr = s.audioService.GenerateSingleAudio(seg.Text, checkpointVoice, checkpoint.TTSProvider, -0.5, jobID, index)
+				}()
+			}
+
+			if videoNeeded {
+				wgSub.Add(1)
+				go func() {
+					defer wgSub.Done()
+					material, mErr = s.stockVideoService.FetchSourceMaterial(ctx, seg.VisualPrompt, seg.VisualDescription, checkpointT2VModel, checkpointT2VProvider, jobID, index, checkpointOrientation)
+				}()
+			}
 			wgSub.Wait()
-			// ... (rest of the loop remains same)
 
 			if aErr != nil {
 				segmentErrors[index] = fmt.Errorf("audio failed: %w", aErr)
@@ -121,22 +199,35 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest
 				return
 			}
 
-			audioPaths[index] = aPath
-			audioTexts[index] = sSeg.Text
-
-			// Now that we have audio, get duration and prepare video
-			duration, _ := utils.GetAudioDuration(aPath)
-			if duration <= 0 {
-				duration = 5.0 // fallback
+			cpMu.Lock()
+			if audioNeeded {
+				seg.AudioPath = aPath
+				seg.AudioDone = true
+				dur, _ := utils.GetAudioDuration(aPath)
+				seg.Duration = dur
 			}
+			duration := seg.Duration
+			cpMu.Unlock()
 
-			vPath, vErr := s.stockVideoService.PrepareVideoFromMaterial(context.Background(), material, duration, jobID, index, orientation)
-			if vErr != nil {
-				segmentErrors[index] = fmt.Errorf("prepare video failed: %w", vErr)
-				return
+			audioPaths[index] = seg.AudioPath
+			audioTexts[index] = seg.Text
+
+			if videoNeeded {
+				vPath, vErr := s.stockVideoService.PrepareVideoFromMaterial(ctx, material, duration, jobID, index, checkpointOrientation)
+				if vErr != nil {
+					segmentErrors[index] = fmt.Errorf("prepare video failed: %w", vErr)
+					return
+				}
+				cpMu.Lock()
+				seg.VideoPath = vPath
+				seg.VideoDone = true
+				cpMu.Unlock()
 			}
-			segmentVideoPaths[index] = vPath
-		}(i, seg)
+			segmentVideoPaths[index] = seg.VideoPath
+
+			// Periodic save (every segment finished)
+			s.jobSvc.SaveCheckpoint(ctx, jobID, checkpoint)
+		}(i)
 	}
 
 	wg.Wait()
@@ -151,7 +242,7 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest
 
 	// 3. Subtitles Generation (Non-fatal)
 	s.jobSvc.UpdateProgress(ctx, jobID, "Generating subtitles", 70)
-	srtPath, err := s.GenerateSRT(jobID, audioPaths, audioTexts, filepath.Join(tempDir, "output"), req.Platform)
+	srtPath, err := s.GenerateSRT(jobID, audioPaths, audioTexts, filepath.Join(tempDir, "output"), checkpoint.Platform)
 	if err != nil {
 		log.Printf("[Job %s] Failed to generate subtitles: %v", jobID, err)
 	}
@@ -182,24 +273,35 @@ func (s *VideoWorkflowService) StartGeneration(jobID string, req GenerateRequest
 	if s.cfg.EnableSubtitles && srtPath != "" {
 		s.jobSvc.UpdateProgress(ctx, jobID, "Burning subtitles", 90)
 		subtitleVideoPath := filepath.Join(tempDir, "output", "final_video_with_subs.mp4")
-		if err := utils.BurnSubtitles(finalVideoPath, srtPath, subtitleVideoPath, orientation); err == nil {
+		if err := utils.BurnSubtitles(finalVideoPath, srtPath, subtitleVideoPath, checkpoint.Orientation); err == nil {
 			finalOutputPath = subtitleVideoPath
 		}
 	}
 
 	// 7. Save & Thumbnail Extraction
 	s.jobSvc.UpdateProgress(ctx, jobID, "Saving final output & extracting thumbnail", 95)
-	savedPath, _ := s.saveToOutputFolder(finalOutputPath, req.Platform, req.ContentName)
+	savedPath, _ := s.saveToOutputFolder(finalOutputPath, checkpoint.Platform, checkpoint.Title)
 
 	// Extract and save thumbnail
 	tempThumbPath := filepath.Join(tempDir, "output", "thumbnail.jpg")
 	var savedThumbPath string
 	if err := s.composerService.ExtractThumbnail(finalOutputPath, tempThumbPath, 1.0); err == nil {
-		savedThumbPath, _ = s.saveThumbnailToOutputFolder(tempThumbPath, req.Platform, req.ContentName)
+		savedThumbPath, _ = s.saveThumbnailToOutputFolder(tempThumbPath, checkpoint.Platform, checkpoint.Title)
 	}
 
 	s.jobSvc.MarkCompleted(ctx, jobID, finalOutputPath, savedPath, savedThumbPath)
 	log.Printf("[Job %s] Video generation completed successfully", jobID)
+}
+
+// CancelJob terminates an active job
+func (s *VideoWorkflowService) CancelJob(jobID string) bool {
+	if cancel, ok := s.activeJobs.Load(jobID); ok {
+		cancel.(context.CancelFunc)()
+		s.activeJobs.Delete(jobID)
+		log.Printf("[Job %s] Job cancellation requested", jobID)
+		return true
+	}
+	return false
 }
 
 // Sub-pipeline: Script

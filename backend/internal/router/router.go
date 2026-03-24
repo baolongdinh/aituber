@@ -69,12 +69,15 @@ func Setup(r *gin.Engine, c RouterConfig) {
 			// Generation
 			protected.POST("/generate", videoHandler.Generate)
 			protected.POST("/series/generate", seriesHandler.GenerateSeries)
+			protected.GET("/series/status/:id", seriesHandler.GetSeriesStatus)
 
 			// Tasks & Gallery
 			protected.GET("/me/tasks", videoHandler.GetMyTasks)
 			protected.GET("/me/active-task", videoHandler.GetActiveTask)
 			protected.GET("/me/videos", videoHandler.GetMyVideos)
 			protected.GET("/status/:job_id", videoHandler.GetStatus)
+			protected.DELETE("/status/:job_id", videoHandler.Cancel)
+			protected.POST("/status/:job_id/resume", videoHandler.Resume)
 			protected.POST("/videos/:id/publish", videoHandler.TogglePublish)
 		}
 

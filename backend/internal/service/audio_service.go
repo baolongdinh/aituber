@@ -27,10 +27,13 @@ type AudioService struct {
 	crossfadeDuration float64
 	rateLimiter       <-chan time.Time
 	ttsCachePath      string // Path to TTS URL cache JSON file
+	voiceCatalog      *VoiceCatalog
+	remoteHubURL      string
+	remoteHubToken    string
 }
 
 // NewAudioService creates a new audio service
-func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir string, audioBitrate string, sampleRate int, crossfadeDuration float64) *AudioService {
+func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir string, audioBitrate string, sampleRate int, crossfadeDuration float64, remoteHubURL, remoteHubToken string) *AudioService {
 	limiter := time.Tick(5000 * time.Millisecond)
 
 	cachePath := filepath.Join(tempDir, "tts_url_cache.json")
@@ -47,12 +50,15 @@ func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir st
 		crossfadeDuration: crossfadeDuration,
 		rateLimiter:       limiter,
 		ttsCachePath:      cachePath,
+		voiceCatalog:      NewVoiceCatalog(),
+		remoteHubURL:      remoteHubURL,
+		remoteHubToken:    remoteHubToken,
 	}
 }
 
 // ttsCacheKey builds the cache lookup key
-func ttsCacheKey(text, voice string, speed float64) string {
-	return fmt.Sprintf("%s|%s|%.1f", text, voice, speed)
+func ttsCacheKey(provider, text, voice string, speed float64, refAudioURL string) string {
+	return fmt.Sprintf("%s|%s|%s|%.1f|%s", provider, text, voice, speed, refAudioURL)
 }
 
 // ttsCacheMu protects concurrent writes to the JSON cache file
@@ -94,6 +100,24 @@ type FPTTTSResponse struct {
 	Error     int    `json:"error,omitempty"`
 	Message   string `json:"message,omitempty"`
 	RequestID string `json:"request_id,omitempty"`
+}
+
+// HubTTSRequest represents Hub TTS API request
+type HubTTSRequest struct {
+	Text        string `json:"Text"`
+	ModelName   string `json:"ModelName"`
+	RefAudioUrl string `json:"RefAudioUrl"`
+}
+
+// HubTTSResponse represents Hub TTS API response
+type HubTTSResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		JobID  string `json:"job_id"`
+		URL    string `json:"url"`
+		Status string `json:"status"`
+	} `json:"data"`
+	Message string `json:"message"`
 }
 
 // ElevenLabsTTSWithTimestampsResponse represents ElevenLabs TTS API response with timestamps
@@ -142,13 +166,35 @@ func (as *AudioService) GenerateAudioChunks(chunks []string, voice string, speed
 	return audioPaths, nil
 }
 
-// GenerateSingleAudio generates a single audio chunk
-func (as *AudioService) GenerateSingleAudio(text, voice string, speed float64, jobID string, index int) (string, error) {
-	audioPath, err := as.generateSingleAudioFPT(text, voice, speed, jobID, index)
-	if err != nil {
+// GenerateSingleAudio generates a single audio chunk with provider support
+func (as *AudioService) GenerateSingleAudio(text, voice, provider string, speed float64, jobID string, index int) (string, error) {
+	// Default to FPT if provider not specified
+	if provider == "" {
+		provider = "fpt"
+	}
+
+	// Validate provider
+	if !as.voiceCatalog.IsSupportedProvider(provider) {
+		return "", fmt.Errorf("unsupported TTS provider: %s", provider)
+	}
+
+	// Validate voice supports the provider
+	if err := as.voiceCatalog.ValidateProvider(voice, provider); err != nil {
 		return "", err
 	}
-	return as.postProcessAudio(audioPath, jobID, index)
+
+	switch provider {
+	case "fpt":
+		audioPath, err := as.generateSingleAudioFPT(text, voice, speed, jobID, index)
+		if err != nil {
+			return "", err
+		}
+		return as.postProcessAudio(audioPath, jobID, index)
+	case "hub":
+		return as.generateSingleAudioHub(text, voice, speed, jobID, index)
+	default:
+		return "", fmt.Errorf("unsupported provider: %s", provider)
+	}
 }
 
 // GenerateAudioFullScript generates TTS for the entire script at once (ElevenLabs flow)
@@ -256,7 +302,7 @@ func (as *AudioService) mapToElevenLabsVoice(voiceID string) string {
 // and save the new URL to cache. No RAM caching — always reads/writes JSON file.
 func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64, jobID string, index int) (string, error) {
 	audioPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_%03d.mp3", index))
-	cacheKey := ttsCacheKey(text, voice, speed)
+	cacheKey := ttsCacheKey("fpt", text, voice, speed, "") // FPT doesn't use ref audio
 
 	// --- CACHE LOOKUP ---
 	if cachedURL := as.ttsReadCache(cacheKey); cachedURL != "" {
@@ -316,6 +362,161 @@ func (as *AudioService) generateSingleAudioFPT(text, voice string, speed float64
 		return as.postProcessAudio(audioPath, jobID, index)
 	}
 	return "", fmt.Errorf("FPT failed after %d API attempts, last error: %v", maxAPIRetries, lastErr)
+}
+
+// generateSingleAudioHub calls Hub TTS API and polls for the result
+func (as *AudioService) generateSingleAudioHub(text, voice string, speed float64, jobID string, index int) (string, error) {
+	if as.remoteHubURL == "" || as.remoteHubToken == "" {
+		return "", fmt.Errorf("Hub TTS configuration missing URL or token")
+	}
+
+	audioPath := filepath.Join(as.tempDir, jobID, "audio", fmt.Sprintf("chunk_%03d.mp3", index))
+
+	// Validate provider support
+	if err := as.voiceCatalog.ValidateProvider(voice, "hub"); err != nil {
+		return "", err
+	}
+
+	// Get ref audio URL (using localhost as base, will be accessible from container)
+	refAudioURL, err := as.voiceCatalog.GetRefAudioURL("http://localhost:8080", voice)
+	if err != nil {
+		return "", fmt.Errorf("failed to get ref audio URL: %w", err)
+	}
+
+	cacheKey := ttsCacheKey("hub", text, voice, speed, refAudioURL)
+
+	// --- CACHE LOOKUP ---
+	if cachedURL := as.ttsReadCache(cacheKey); cachedURL != "" {
+		log.Printf("[Chunk %d] Hub TTS cache HIT for key (%.30s...). Trying URL: %s", index, cacheKey, cachedURL)
+		if data, err := as.downloadAudio(cachedURL); err == nil {
+			if saveErr := as.saveAudioFile(data, audioPath); saveErr == nil {
+				log.Printf("[Chunk %d] Hub TTS cache served successfully.", index)
+				return audioPath, nil
+			}
+		} else {
+			log.Printf("[Chunk %d] Cached Hub URL no longer valid (%v). Falling back to Hub call.", index, err)
+		}
+	}
+
+	// --- HUB TTS FLOW ---
+	maxRetries := 3
+	var lastErr error
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			log.Printf("[Chunk %d] Retrying Hub TTS (Attempt %d/%d)", index, attempt+1, maxRetries)
+		}
+
+		audioURL, apiErr := as.callHubTTS(text, refAudioURL)
+		if apiErr != nil {
+			log.Printf("[Chunk %d] Hub API call failed: %v", index, apiErr)
+			lastErr = apiErr
+			time.Sleep(2 * time.Second)
+			continue
+		}
+
+		// Save URL to cache immediately
+		as.ttsWriteCache(cacheKey, audioURL)
+		log.Printf("[Chunk %d] Hub TTS URL cached: %s", index, audioURL)
+
+		// Download audio with polling (Hub returns URL directly, no async polling needed)
+		audioData, downloadErr := as.pollHubAudio(audioURL, index)
+		if downloadErr != nil {
+			log.Printf("[Chunk %d] Hub audio download failed: %v", index, downloadErr)
+			lastErr = downloadErr
+			continue
+		}
+
+		if err := as.saveAudioFile(audioData, audioPath); err != nil {
+			return "", err
+		}
+		return as.postProcessAudio(audioPath, jobID, index)
+	}
+
+	return "", fmt.Errorf("Hub TTS failed after %d attempts, last error: %v", maxRetries, lastErr)
+}
+
+// callHubTTS calls Hub TTS API and returns the audio URL
+func (as *AudioService) callHubTTS(text, refAudioURL string) (string, error) {
+	url := fmt.Sprintf("%s/api/v1/generate/tts", as.remoteHubURL)
+
+	payload := HubTTSRequest{
+		Text:        text,
+		ModelName:   "f5-tts-vi",
+		RefAudioUrl: refAudioURL,
+	}
+
+	jsonPayload, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal Hub request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonPayload))
+	if err != nil {
+		return "", fmt.Errorf("failed to create Hub request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+as.remoteHubToken)
+	req.Header.Set("accept", "application/json")
+
+	resp, err := as.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Hub request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read Hub response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Hub API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var apiResp HubTTSResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return "", fmt.Errorf("failed to parse Hub response: %w. Body: %s", err, string(body))
+	}
+
+	if apiResp.Status != "success" {
+		return "", fmt.Errorf("Hub API error: %s", apiResp.Message)
+	}
+
+	if apiResp.Data.URL == "" {
+		return "", fmt.Errorf("Hub API returned no audio URL. Response: %+v", apiResp)
+	}
+
+	log.Printf("[Hub TTS] Received audio URL: %s (job_id: %s)", apiResp.Data.URL, apiResp.Data.JobID)
+
+	return apiResp.Data.URL, nil
+}
+
+// pollHubAudio downloads audio from Hub URL with simple retry logic
+func (as *AudioService) pollHubAudio(audioURL string, chunkIndex int) ([]byte, error) {
+	maxAttempts := 5
+	pollInterval := 2 * time.Second
+
+	for i := 1; i <= maxAttempts; i++ {
+		data, err := as.downloadAudio(audioURL)
+		if err == nil {
+			log.Printf("[Chunk %d] Hub audio ready after %d attempt(s)", chunkIndex, i)
+			return data, nil
+		}
+
+		if strings.Contains(err.Error(), "404") {
+			log.Printf("[Chunk %d] Hub audio not ready (404), waiting %ds (attempt %d/%d)", chunkIndex, pollInterval/time.Second, i, maxAttempts)
+		} else {
+			log.Printf("[Chunk %d] Hub download error: %v, waiting %ds (attempt %d/%d)", chunkIndex, err, pollInterval/time.Second, i, maxAttempts)
+		}
+
+		if i < maxAttempts {
+			time.Sleep(pollInterval)
+		}
+	}
+
+	return nil, fmt.Errorf("Hub audio still not available after %d attempts", maxAttempts)
 }
 
 // callElevenLabsTTSWithTimestamps calls ElevenLabs API and returns audio + alignment

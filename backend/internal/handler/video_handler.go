@@ -5,6 +5,7 @@ import (
 	"aituber/internal/service"
 	"aituber/pkg/response"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -169,8 +170,14 @@ func (h *VideoHandler) Generate(c *gin.Context) {
 		return
 	}
 
-	// Speaking speed force
-	req.SpeakingSpeed = 0
+	// Validate TTS provider
+	if req.TTSProvider == "" {
+		req.TTSProvider = "fpt" // Default to FPT
+	}
+	if req.TTSProvider != "fpt" && req.TTSProvider != "hub" {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "tts_provider must be 'fpt' or 'hub'")
+		return
+	}
 
 	// Content name slug
 	if req.ContentName == "" {
@@ -225,6 +232,63 @@ func (h *VideoHandler) GetStatus(c *gin.Context) {
 	}
 
 	response.OK(c, resp)
+}
+
+// Cancel handles DELETE /api/v1/status/:job_id
+func (h *VideoHandler) Cancel(c *gin.Context) {
+	jobID := c.Param("job_id")
+	success := h.workflow.CancelJob(jobID)
+	if !success {
+		response.Fail(c, http.StatusNotFound, "NOT_FOUND", "job not active or already finished")
+		return
+	}
+
+	// Update DB status to failed (cancelled)
+	err := h.jobSvc.MarkFailed(c.Request.Context(), jobID, fmt.Errorf("Cancelled by user"))
+	if err != nil {
+		log.Printf("[Job %s] Failed to mark as failed after cancel: %v", jobID, err)
+	}
+
+	response.OK(c, gin.H{"message": "job cancelled"})
+}
+
+// Resume handles POST /api/v1/status/:job_id/resume
+func (h *VideoHandler) Resume(c *gin.Context) {
+	jobID := c.Param("job_id")
+	job, err := h.jobSvc.GetJob(c.Request.Context(), jobID)
+	if err != nil || job == nil {
+		response.Fail(c, http.StatusNotFound, "NOT_FOUND", "job not found")
+		return
+	}
+
+	if job.Status == "processing" || job.Status == "completed" {
+		response.Fail(c, http.StatusBadRequest, "BAD_REQUEST", "job is already "+job.Status)
+		return
+	}
+
+	// Update status to processing
+	err = h.jobSvc.UpdateProgress(c.Request.Context(), jobID, "Resuming task...", 10)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update job status")
+		return
+	}
+
+	// Reconstruct request from job record
+	req := service.GenerateRequest{
+		Platform:    job.Platform,
+		Topic:       job.Topic,
+		Voice:       job.Voice,
+		TTSProvider: job.TTSProvider,
+		ContentName: job.ContentName,
+	}
+
+	// Start background generation (it will load checkpoint automatically)
+	go h.workflow.StartGeneration(job.ID, req)
+
+	response.OK(c, gin.H{
+		"job_id": job.ID,
+		"status": "processing",
+	})
 }
 
 // Download handles GET /api/v1/download/:job_id

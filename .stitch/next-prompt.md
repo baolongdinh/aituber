@@ -1,33 +1,31 @@
 ---
-page: job-detail-youtube
+page: generator-v2
 ---
-# ViralCraft YouTube Job Progress & Result View - Red Theme
+# Redesign the "Universal Generator" screen for ViralCraft to be highly professional, tidy, and minimalist.
 
-Design a high-fidelity "Job Detail" or "Processing" page for ViralCraft in **YouTube Mode**.
+**Objective:**
+Eliminate the "cluttered" feeling of multiple separate cards. Create a cohesive, single-card sidebar for settings and a spacious workbench area for the output.
+
+**Layout Requirements:**
+1. **Unified Sidebar (Left)**: 
+   - A single, elegant frosted glass sidebar containing all form fields.
+   - Use subtle dividers or sections with clean headers (Content, Voice, Configuration).
+   - The "Bắt đầu tạo Video" (Generate) button should be prominent at the bottom of this sidebar.
+2. **Workbench Area (Right/Center)**:
+   - A large, focused area for the "Idle" state and "Processing" flow.
+   - For Idle: A clean icon and minimalist text ("Ready to go?").
+   - For Processing: A high-end progress circle or bar with specific step details.
+3. **Integrated Activity Feed**:
+   - A compact, professional list of recent generations. 
+   - Use high-quality icons for status (Processing, Success, Failed).
+   - "Series" items should have a stacked visual cue but remain tidy.
 
 **DESIGN SYSTEM (REQUIRED for ViralCraft):**
-- **Dual-Theme Logic**: Platform is **YouTube**. Use **YouTube Red (#ff0000)** and **Dark Red (#b30000)**.
-- **Theme**: Ultra Dark Mode with a **Red Radial Glow** in the background.
-- **Style**: Frosted Dark cards (#121214) with subtle 1px internal borders.
-- **Typography**: Clean Sans-Serif (Inter).
+- **Dual-Theme Logic**: 
+    - If platform is TikTok: Use **TikTok Purple (#a14bff)** and **Pink (#ff3f6c)**.
+    - If platform is YouTube: Use **YouTube Red (#ff0000)** and **Dark Red (#b30000)**.
+- **Theme**: Ultra Dark Mode with platform-specific Radial Glow.
+- **Style**: Frosted Dark cards (#121214) with subtle 1px borders.
+- **Aesthetics**: Professional Split Screen layout. High-contrast labels, sleek "Gemini AI" branding.
 
-**PAGE STRUCTURE:**
-1. **Header**:
-   - Title: "[Content Name]" (e.g., "The History of AI - Part 1")
-   - Breadcrumbs: Dashboard / Jobs / [JobID]
-   - Platform: YouTube (Red indicator).
-
-2. **Main Status Card**:
-   - **Status Badge**: "Đang xử lý..." (Red theme).
-   - **Progress Section**: Large 65% text and a sleek Red horizontal progress bar.
-   - **Step**: "Step: Merging 4K audio and video tracks...".
-
-3. **Output Content (Completed State)**:
-   - **Video Player**: A 16:9 Landscape premium video player.
-   - **Actions**: "Download 4K Video" (Red Gradient button), "Back to Dashboard".
-
-4. **Configuration Summary (Sidebar)**:
-   - Topic: [Topic text]
-   - Aspect Ratio: 16:9 Landscape
-   - Platform: YouTube
-   - Model: FLUX-1.dev
+**Atmosphere**: Premium, high-tech, AI-driven. No clutter, no unnecessary decorative elements that don't serve a function.

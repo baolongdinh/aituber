@@ -144,8 +144,9 @@ func (c *Config) GetDatabaseDSN() string {
 
 // Validate checks if configuration is valid
 func (c *Config) Validate() error {
-	if len(c.TTSAPIKeys) == 0 {
-		return errors.New("TTS_API_KEYS is required")
+	// If using FPT TTS, require API keys. If using Hub only, FPT keys not required.
+	if len(c.TTSAPIKeys) == 0 && c.RemoteHubURL == "" {
+		return errors.New("either TTS_API_KEYS (for FPT) or REMOTE_HUB_URL (for Hub) is required")
 	}
 	if c.AudioChunkSize <= 0 {
 		return errors.New("AUDIO_CHUNK_SIZE must be positive")

@@ -92,6 +92,10 @@ func (r *jobRepository) UpdateTitle(ctx context.Context, id, title string) error
 	return r.db.WithContext(ctx).Model(&model.Job{}).Where("id = ?", id).Update("content_name", title).Error
 }
 
+func (r *jobRepository) UpdateCheckpoint(ctx context.Context, id string, data []byte) error {
+	return r.db.WithContext(ctx).Model(&model.Job{}).Where("id = ?", id).Update("checkpoint_data", data).Error
+}
+
 // SeriesRepository implementation
 
 type seriesRepository struct{ db *gorm.DB }

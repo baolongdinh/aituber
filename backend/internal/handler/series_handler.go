@@ -2,6 +2,7 @@ package handler
 
 import (
 	"aituber/config"
+	"aituber/internal/model"
 	"aituber/internal/service"
 	"aituber/pkg/response"
 	"context"
@@ -103,31 +104,53 @@ func (h *SeriesHandler) processSeriesGeneration(seriesID, userID string, req ser
 		return
 	}
 
-	// 2. Process parts
+	// 2. Pre-create all job records in DB synchronous so the UI can show them immediately
+	var jobs []*model.Job
+	for i := 0; i < req.NumParts; i++ {
+		partName := fmt.Sprintf("%s - Part %d", req.ContentName, i+1)
+		// Try to use the outline title if available
+		if i < len(outlines) && outlines[i].Title != "" {
+			partName = outlines[i].Title
+		}
+
+		job, err := h.jobSvc.CreateSeriesPartJob(ctx, userID, seriesID, i+1, req.Platform, partName, req.Topic, req.Voice, req.TTSProvider)
+		if err != nil {
+			log.Printf("[Series %s] Failed to pre-create part %d job: %v", seriesID, i, err)
+			continue
+		}
+		jobs = append(jobs, job)
+	}
+
+	// 3. Process parts in parallel
 	var wg sync.WaitGroup
 	for i := 0; i < req.NumParts; i++ {
+		if i >= len(jobs) {
+			continue // skip if we failed to create this job
+		}
+
 		wg.Add(1)
-		go func(idx int) {
+		go func(idx int, currentJob *model.Job) {
 			defer wg.Done()
+
+			// Update status to show script generation has started
+			_ = h.jobSvc.UpdateProgress(ctx, currentJob.ID, "Generating script...", 5)
 
 			// Generate part script
 			genScript, err := h.scriptSvc.GenerateSeriesPartScript(req.Topic, req.Platform, outlines, idx)
 			if err != nil {
 				log.Printf("[Series %s] Part %d script failed: %v", seriesID, idx, err)
+				_ = h.jobSvc.MarkFailed(ctx, currentJob.ID, err)
 				return
 			}
 
-			// Create part job
-			partName := fmt.Sprintf("%s - Part %d", req.ContentName, idx+1)
-			if genScript.Title != "" {
+			partName := currentJob.ContentName
+			// If Gemini generated a better title, update the job
+			if genScript.Title != "" && genScript.Title != partName {
 				partName = genScript.Title
+				_ = h.jobSvc.UpdateJobTitle(ctx, currentJob.ID, partName)
 			}
 
-			job, err := h.jobSvc.CreateSeriesPartJob(ctx, userID, seriesID, idx+1, req.Platform, partName, req.Topic, req.Voice, req.TTSProvider)
-			if err != nil {
-				log.Printf("[Series %s] Failed to create part %d job: %v", seriesID, idx, err)
-				return
-			}
+			_ = h.jobSvc.UpdateProgress(ctx, currentJob.ID, "Preparing video generation...", 10)
 
 			// Prepare generation request for this part
 			genReq := service.GenerateRequest{
@@ -143,8 +166,8 @@ func (h *SeriesHandler) processSeriesGeneration(seriesID, userID string, req ser
 			}
 
 			// Start individual video generation workflow
-			h.workflow.StartGeneration(job.ID, genReq)
-		}(i)
+			h.workflow.StartGeneration(currentJob.ID, genReq)
+		}(i, jobs[i])
 	}
 	wg.Wait()
 	_ = h.jobSvc.UpdateSeriesStatus(ctx, seriesID, "completed")

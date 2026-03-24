@@ -8,16 +8,22 @@
 :root {
   --bg-dark: #0a0a0c;
   --card-dark: #121214;
-  --text-main: #f1f5f9;
+  --text-main: #f8fafc;
   --text-muted: #94a3b8;
-  
+
   /* TikTok Theme */
   --tiktok-primary: #a14bff;
   --tiktok-secondary: #ff3f6c;
-  
+  --tiktok-glow: rgba(161, 75, 255, 0.15);
+
   /* YouTube Theme */
   --youtube-primary: #ff0000;
   --youtube-secondary: #b30000;
+  --youtube-glow: rgba(255, 0, 0, 0.12);
+
+  --glass-bg: rgba(18, 18, 20, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-blur: blur(20px);
 }
 
 body {
@@ -26,6 +32,7 @@ body {
   font-family: 'Inter', sans-serif;
   margin: 0;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 .bg-radial-glow {
@@ -33,46 +40,74 @@ body {
   inset: 0;
   pointer-events: none;
   z-index: 0;
+  transition: background 1s ease;
 }
 
-/* Dynamic themes based on <html> or <body> class */
 .theme-tiktok .bg-radial-glow {
-  background: radial-gradient(circle at 50% 50%, rgba(161, 75, 255, 0.1) 0%, rgba(10, 10, 12, 0) 70%);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(161, 75, 255, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(255, 63, 108, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(161, 75, 255, 0.02) 0%, transparent 70%);
 }
 
 .theme-youtube .bg-radial-glow {
-  background: radial-gradient(circle at 50% 50%, rgba(255, 0, 0, 0.08) 0%, rgba(10, 10, 12, 0) 70%);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 0, 0, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(179, 0, 0, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 50% 50%, rgba(255, 0, 0, 0.02) 0%, transparent 70%);
 }
 
 .glass-card {
-  background: rgba(18, 18, 20, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 1rem;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 1.25rem;
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
 }
 
 .text-gradient-tiktok {
-  background: linear-gradient(to right, #a14bff, #ff3f6c);
+  background: linear-gradient(135deg, #a14bff, #ff3f6c);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .text-gradient-youtube {
-  background: linear-gradient(to right, #ff0000, #b30000);
+  background: linear-gradient(135deg, #ff0000, #b30000);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+/* Global scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+  background-clip: content-box;
+}
+
+/* Base Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
 }

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ViralCraft | generator-v2</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&amp;family=Manrope:wght@300;400;500;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-primary": "#690100",
+              "on-tertiary": "#670021",
+              "error-container": "#93000a",
+              "on-secondary-fixed-variant": "#6500b8",
+              "on-error-container": "#ffdad6",
+              "error": "#ffb4ab",
+              "surface-container-lowest": "#0e0e0f",
+              "primary-container": "#ff5540",
+              "surface-container-low": "#1c1b1c",
+              "on-secondary": "#470083",
+              "inverse-on-surface": "#313031",
+              "on-tertiary-container": "#5a001c",
+              "primary": "#ffb4a8",
+              "on-primary-fixed": "#410000",
+              "outline-variant": "#603e39",
+              "on-error": "#690005",
+              "tertiary-fixed": "#ffd9dc",
+              "tertiary-fixed-dim": "#ffb2ba",
+              "tertiary": "#ffb2ba",
+              "surface-container": "#201f20",
+              "secondary-fixed-dim": "#dab9ff",
+              "surface": "#131314",
+              "inverse-primary": "#c00100",
+              "primary-fixed": "#ffdad4",
+              "on-secondary-fixed": "#2b0053",
+              "on-surface-variant": "#ebbbb4",
+              "on-background": "#e5e2e3",
+              "secondary-container": "#7500d3",
+              "inverse-surface": "#e5e2e3",
+              "outline": "#b18780",
+              "surface-container-high": "#2a2a2b",
+              "surface-dim": "#131314",
+              "on-tertiary-fixed": "#400011",
+              "on-primary-container": "#5c0000",
+              "surface-container-highest": "#353436",
+              "surface-bright": "#3a393a",
+              "on-secondary-container": "#dab8ff",
+              "surface-tint": "#ffb4a8",
+              "secondary": "#dab9ff",
+              "secondary-fixed": "#efdbff",
+              "on-surface": "#e5e2e3",
+              "primary-fixed-dim": "#ffb4a8",
+              "on-tertiary-fixed-variant": "#910031",
+              "on-primary-fixed-variant": "#930100",
+              "background": "#131314",
+              "tertiary-container": "#ff4f74",
+              "surface-variant": "#353436"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Manrope"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+      }
+      .glass-sidebar {
+        background: rgba(14, 14, 15, 0.8);
+        backdrop-filter: blur(20px);
+      }
+      .platform-glow-youtube {
+        background: radial-gradient(circle at 0% 0%, rgba(255, 85, 64, 0.15) 0%, transparent 50%);
+      }
+      .platform-glow-tiktok {
+        background: radial-gradient(circle at 100% 100%, rgba(218, 185, 255, 0.1) 0%, transparent 50%);
+      }
+      .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+      .custom-scrollbar::-webkit-scrollbar-thumb { background: #353436; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-surface-container-lowest text-on-surface font-body selection:bg-primary selection:text-on-primary overflow-hidden h-screen">
+<!-- Global Background Accents -->
+<div class="fixed inset-0 pointer-events-none z-0">
+<div class="absolute inset-0 platform-glow-youtube"></div>
+<div class="absolute inset-0 platform-glow-tiktok"></div>
+</div>
+<!-- Top Navigation Bar -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-8 py-4 w-full bg-[#0e0e0f] bg-[#131314] flat no shadows">
+<div class="flex items-center gap-4">
+<span class="text-xl font-black text-[#ffb4a8] tracking-tighter font-['Space_Grotesk'] font-bold tracking-tight">ViralCraft</span>
+<span class="text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 border border-outline-variant/30 text-on-surface-variant rounded-full">v2.0 Beta</span>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden md:flex items-center gap-8">
+<button class="text-[#ffb4a8] font-bold text-sm uppercase tracking-widest font-label">Generator</button>
+<button class="text-[#ebbbb4] opacity-70 hover:opacity-100 transition-opacity text-sm uppercase tracking-widest font-label">Analytics</button>
+<button class="text-[#ebbbb4] opacity-70 hover:opacity-100 transition-opacity text-sm uppercase tracking-widest font-label">Archive</button>
+</div>
+<div class="flex items-center gap-4 border-l border-outline-variant/20 pl-6">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer transition-colors" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer transition-colors" data-icon="history">history</span>
+<div class="w-8 h-8 rounded-full bg-surface-container-high overflow-hidden border border-outline-variant/50">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Minimalist user profile avatar circle" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCO3iNmeWz8ivYhlGq45hR045zh-WHSyxvClJQuLtHNSFf9MuSj1j5AOT-dEjegRp0TeIChNjRbDxKfxgcwoR44xxavonEmu0lj-M-YMBlqKl2MpP0kD83KVK97dKEdfABP-gckIxQey9Tsu8xirEIAmFSEY_burDghF6e-zpLY34OT3rQZmLocio40zZFVX8PU4BHe-zGk-GXsGH3Bq45lsMi01OwZyvij3h6eXxpewwLKo5tD5lASdY_ddCJY6eAXRoQA66boNQE"/>
+</div>
+</div>
+</div>
+</header>
+<main class="flex h-screen pt-16">
+<!-- Sidebar Navigation (The Command Center) -->
+<aside class="fixed left-0 h-screen w-64 border-r-0 flex flex-col gap-6 pt-24 pb-8 bg-[#0e0e0f] bg-[#131314] flat tonal layering glass-sidebar z-40">
+<div class="px-6 mb-4">
+<div class="flex items-center gap-3 p-3 rounded-xl bg-surface-container-low border border-outline-variant/10">
+<div class="w-10 h-10 flex items-center justify-center rounded-lg bg-secondary-container text-on-secondary-container">
+<span class="material-symbols-outlined" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+</div>
+<div>
+<div class="text-xs font-headline font-bold text-secondary">Gemini AI</div>
+<div class="text-[10px] text-on-surface-variant uppercase tracking-tighter">Workbench Engine</div>
+</div>
+</div>
+</div>
+<nav class="flex-1 flex flex-col gap-1">
+<!-- Content Tab -->
+<button class="group flex items-center gap-4 py-3 border-l-2 border-[#ffb4a8] text-[#ffffff] bg-transparent pl-4 transition-all ease-in-out duration-300">
+<span class="material-symbols-outlined text-primary" data-icon="edit_note">edit_note</span>
+<span class="font-['Manrope'] text-sm uppercase tracking-widest font-semibold">Content</span>
+</button>
+<!-- Voice Tab -->
+<button class="group flex items-center gap-4 py-3 text-[#ebbbb4] opacity-50 pl-4 hover:bg-[#1c1b1c] hover:opacity-100 transition-all ease-in-out duration-300">
+<span class="material-symbols-outlined" data-icon="record_voice_over">record_voice_over</span>
+<span class="font-['Manrope'] text-sm uppercase tracking-widest">Voice</span>
+</button>
+<!-- Configuration Tab -->
+<button class="group flex items-center gap-4 py-3 text-[#ebbbb4] opacity-50 pl-4 hover:bg-[#1c1b1c] hover:opacity-100 transition-all ease-in-out duration-300">
+<span class="material-symbols-outlined" data-icon="settings_input_component">settings_input_component</span>
+<span class="font-['Manrope'] text-sm uppercase tracking-widest">Configuration</span>
+</button>
+<div class="mt-8 px-6">
+<div class="text-[10px] text-on-surface-variant/50 uppercase tracking-[0.2em] mb-4">Feeds</div>
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 text-on-surface-variant/70 hover:text-on-surface cursor-pointer">
+<span class="material-symbols-outlined text-lg" data-icon="play_circle">play_circle</span>
+<span class="text-xs font-label">YouTube Feed</span>
+</div>
+<div class="flex items-center gap-3 text-on-surface-variant/70 hover:text-on-surface cursor-pointer">
+<span class="material-symbols-outlined text-lg" data-icon="dynamic_feed">dynamic_feed</span>
+<span class="text-xs font-label">TikTok Feed</span>
+</div>
+</div>
+</div>
+</nav>
+<div class="px-4 mt-auto">
+<button class="w-full bg-gradient-to-r from-primary to-primary-container text-on-primary font-headline font-bold py-4 rounded-xl flex items-center justify-center gap-2 group hover:scale-[1.02] active:scale-95 transition-all">
+<span>Bắt đầu tạo Video</span>
+<span class="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</aside>
+<!-- Main Content Area (Workbench & Activity) -->
+<section class="ml-64 flex-1 flex flex-col md:flex-row h-full overflow-hidden">
+<!-- Center Workbench: Idle State -->
+<div class="flex-1 flex flex-col relative border-r border-outline-variant/10">
+<div class="absolute inset-0 flex flex-col items-center justify-center p-12 text-center">
+<div class="relative mb-8">
+<div class="absolute inset-0 bg-primary/20 blur-[60px] rounded-full"></div>
+<div class="relative w-32 h-32 flex items-center justify-center rounded-full border border-primary/30 bg-surface-container-lowest">
+<span class="material-symbols-outlined text-5xl text-primary" data-icon="rocket_launch" style="font-variation-settings: 'FILL' 1;">rocket_launch</span>
+</div>
+</div>
+<h2 class="text-4xl font-headline font-black tracking-tight text-on-surface mb-2 uppercase">Ready to go?</h2>
+<p class="text-on-surface-variant font-body max-w-sm">Configure your content and voice parameters in the sidebar to start the generation process.</p>
+<div class="mt-12 grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-w-2xl text-left">
+<div class="p-6 rounded-2xl bg-surface-container-low border border-outline-variant/10 hover:border-primary/30 transition-colors group cursor-pointer">
+<div class="flex items-center gap-3 mb-4">
+<span class="material-symbols-outlined text-primary" data-icon="auto_awesome_motion">auto_awesome_motion</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-primary">Content Mode</span>
+</div>
+<h3 class="text-lg font-headline font-bold mb-1">Series Generation</h3>
+<p class="text-xs text-on-surface-variant">Create a batch of up to 10 viral shorts in one session.</p>
+</div>
+<div class="p-6 rounded-2xl bg-surface-container-low border border-outline-variant/10 hover:border-secondary/30 transition-colors group cursor-pointer">
+<div class="flex items-center gap-3 mb-4">
+<span class="material-symbols-outlined text-secondary" data-icon="architecture">architecture</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-secondary">Custom Mode</span>
+</div>
+<h3 class="text-lg font-headline font-bold mb-1">Precision Editing</h3>
+<p class="text-xs text-on-surface-variant">Fine-tune script, voice synthesis, and visual overlays.</p>
+</div>
+</div>
+</div>
+<!-- Subtle Status Bar Footer -->
+<div class="absolute bottom-0 w-full p-6 flex justify-between items-center bg-surface-container-lowest/50 backdrop-blur-md">
+<div class="flex items-center gap-3">
+<span class="flex h-2 w-2 rounded-full bg-emerald-500"></span>
+<span class="text-[10px] font-label text-on-surface-variant uppercase tracking-widest">System Online: GPU Cluster 04</span>
+</div>
+<div class="flex items-center gap-4 text-[10px] text-on-surface-variant/40">
+<span>LATENCY: 24MS</span>
+<span>API: STABLE</span>
+</div>
+</div>
+</div>
+<!-- Right: Integrated Activity Feed -->
+<div class="w-full md:w-80 bg-surface-container-lowest flex flex-col h-full border-l border-outline-variant/10">
+<div class="p-6 border-b border-outline-variant/10">
+<div class="flex items-center justify-between mb-2">
+<h3 class="font-headline font-bold text-sm tracking-widest uppercase">Activity Feed</h3>
+<span class="material-symbols-outlined text-lg text-on-surface-variant" data-icon="filter_list">filter_list</span>
+</div>
+<p class="text-[10px] text-on-surface-variant opacity-60">Real-time job monitoring</p>
+</div>
+<div class="flex-1 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
+<!-- Processing Job -->
+<div class="p-4 rounded-xl bg-surface-container border border-primary/20 relative overflow-hidden">
+<div class="absolute top-0 left-0 h-1 bg-primary w-2/3"></div>
+<div class="flex items-center justify-between mb-3">
+<div class="flex items-center gap-2">
+<div class="w-6 h-6 rounded bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-primary" data-icon="video_settings">video_settings</span>
+</div>
+<span class="text-xs font-bold truncate">Project_Mars_Exploration</span>
+</div>
+<span class="text-[10px] text-primary animate-pulse font-bold">65%</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[12px] text-on-surface-variant" data-icon="hourglass_top">hourglass_top</span>
+<span class="text-[10px] text-on-surface-variant">Synthesizing Voice...</span>
+</div>
+</div>
+<!-- Series Success Job -->
+<div class="p-4 rounded-xl bg-surface-container-low border border-outline-variant/5 group hover:border-outline-variant/20 transition-all cursor-pointer">
+<div class="flex gap-2 items-start">
+<div class="relative shrink-0">
+<div class="w-8 h-8 rounded bg-emerald-500/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px] text-emerald-500" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<!-- Stacked Cue -->
+<div class="absolute -bottom-1 -right-1 w-4 h-4 rounded bg-surface-container-highest flex items-center justify-center border border-surface-container text-[8px] font-bold">3</div>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<span class="text-xs font-bold text-on-surface">Daily_Stoic_Quotes</span>
+<span class="text-[8px] text-on-surface-variant uppercase">2m ago</span>
+</div>
+<span class="text-[10px] text-on-surface-variant">Series Ready • TikTok Optimized</span>
+</div>
+</div>
+</div>
+<!-- Failed Job -->
+<div class="p-4 rounded-xl bg-surface-container-low border border-outline-variant/5 opacity-60">
+<div class="flex gap-2 items-start">
+<div class="w-8 h-8 rounded bg-error/10 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px] text-error" data-icon="error_outline">error_outline</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<span class="text-xs font-bold text-on-surface">Finance_Hack_03</span>
+<span class="text-[8px] text-on-surface-variant uppercase">15m ago</span>
+</div>
+<span class="text-[10px] text-error">Source Asset Missing</span>
+</div>
+</div>
+</div>
+<!-- Success Job -->
+<div class="p-4 rounded-xl bg-surface-container-low border border-outline-variant/5">
+<div class="flex gap-2 items-start">
+<div class="w-8 h-8 rounded bg-emerald-500/10 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-[16px] text-emerald-500" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start">
+<span class="text-xs font-bold text-on-surface">Space_X_Launch</span>
+<span class="text-[8px] text-on-surface-variant uppercase">1h ago</span>
+</div>
+<span class="text-[10px] text-on-surface-variant">Ready for Export</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Feed Action -->
+<div class="p-4 border-t border-outline-variant/10">
+<button class="w-full py-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center gap-2">
+                        View Complete Archive
+                        <span class="material-symbols-outlined text-sm" data-icon="open_in_new">open_in_new</span>
+</button>
+</div>
+</div>
+</section>
+</main>
+<!-- Floating Tooltip for Platform Context (Hidden on small screens) -->
+<div class="fixed bottom-8 left-72 hidden lg:flex items-center gap-3 px-4 py-2 bg-surface-container-high/40 backdrop-blur-xl border border-outline-variant/20 rounded-full z-50">
+<span class="flex h-2 w-2 rounded-full bg-primary shadow-[0_0_10px_rgba(255,85,64,0.6)]"></span>
+<span class="text-[10px] font-bold uppercase tracking-[0.2em] text-on-surface">Active Mode: YouTube Viral Red</span>
+<div class="h-4 w-[1px] bg-outline-variant/30 mx-2"></div>
+<button class="text-[10px] font-bold text-secondary-fixed-dim hover:text-secondary transition-colors uppercase">Switch to TikTok</button>
+</div>
+</body></html>

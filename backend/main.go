@@ -55,6 +55,10 @@ func main() {
 	r.Static("/ai-videos", cfg.OutputDir)
 	log.Printf("Serving static files from: %s", cfg.OutputDir)
 
+	// Serve voice reference audio files for Hub TTS
+	r.Static("/voice", "./voice")
+	log.Printf("Serving voice files from: ./voice")
+
 	// --- SETUP DEPENDENCY INJECTION ---
 	// 1. Repositories
 	userRepo := repository.NewUserRepository(db)
@@ -82,6 +86,8 @@ func main() {
 		cfg.AudioBitrate,
 		cfg.AudioSampleRate,
 		cfg.AudioCrossfadeDuration,
+		cfg.RemoteHubURL,
+		cfg.RemoteHubToken,
 	)
 	videoProcessor := service.NewVideoProcessor(
 		videoPool,

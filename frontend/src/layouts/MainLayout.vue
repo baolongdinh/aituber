@@ -75,33 +75,57 @@ function setPlatform(p) {
     <!-- Global Glow -->
     <div class="bg-radial-glow"></div>
 
-    <!-- Top Navigation -->
-    <header class="app-header">
-      <div class="header-inner">
-        <div class="left-section">
-          <div class="logo">
-            <div class="logo-icon" :class="platform">
-              <span class="material-symbols-outlined">auto_videocam</span>
-            </div>
-            <h2 class="logo-text" :class="'text-gradient-' + platform">ViralCraft</h2>
-            <span class="platform-label">{{ platform === 'tiktok' ? 'TIKTOK CREATOR' : 'YOUTUBE STUDIO' }}</span>
+    <!-- Global Sidebar Navigation -->
+    <aside class="side-navigation" :class="platform">
+      <div class="sidebar-top">
+        <div class="logo-v2">
+          <div class="logo-circle" :class="platform">
+            <span class="material-symbols-outlined">auto_videocam</span>
           </div>
-          
-          <nav class="desktop-nav">
-            <router-link to="/">Dashboard</router-link>
-            <router-link to="/explore">Explore</router-link>
-            <router-link to="/generator" @click.prevent="!isAuthenticated && login()">Generator</router-link>
-            <router-link to="/gallery" @click.prevent="!isAuthenticated && login()">My Library</router-link>
-          </nav>
+          <h2 class="logo-text-v2">ViralCraft</h2>
         </div>
+      </div>
 
-        <div class="right-section">
+      <nav class="sidebar-links">
+        <router-link to="/" class="sidebar-link">
+          <span class="material-symbols-outlined">dashboard</span>
+          <span>Dashboard</span>
+        </router-link>
+        <router-link to="/explore" class="sidebar-link">
+          <span class="material-symbols-outlined">explore</span>
+          <span>Explore</span>
+        </router-link>
+        <router-link to="/generator" class="sidebar-link" @click.prevent="!isAuthenticated && login()">
+          <span class="material-symbols-outlined">bolt</span>
+          <span>Generator</span>
+        </router-link>
+        <router-link to="/gallery" class="sidebar-link" @click.prevent="!isAuthenticated && login()">
+          <span class="material-symbols-outlined">library_books</span>
+          <span>My Library</span>
+        </router-link>
+      </nav>
+
+      <div class="sidebar-footer">
+        <!-- Platform switcher in sidebar as well for easy access -->
+        <div class="sidebar-platform-info">
+          <p class="opacity-30 text-[10px] uppercase tracking-widest font-bold mb-3">Active Engine</p>
+          <div class="platform-mini-pill" :class="platform">
+            {{ platform.toUpperCase() }} STUDIO
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="content-wrapper">
+      <!-- Top Header (Clean) -->
+      <header class="app-header-v2">
+        <div class="header-right-controls">
           <!-- Platform Switcher -->
-          <div class="platform-switcher">
+          <div class="platform-switcher-v2">
             <button 
               :class="{ active: platform === 'tiktok' }" 
               @click="setPlatform('tiktok')"
-              class="switch-btn tiktok"
+              class="switch-btn-v2 tiktok"
             >
               <span class="material-symbols-outlined">filter_frames</span>
               TikTok
@@ -109,27 +133,24 @@ function setPlatform(p) {
             <button 
               :class="{ active: platform === 'youtube' }" 
               @click="setPlatform('youtube')"
-              class="switch-btn youtube"
+              class="switch-btn-v2 youtube"
             >
               <span class="material-symbols-outlined">play_circle</span>
               YouTube
             </button>
           </div>
 
-          <!-- User Profile -->
-          <!-- User Profile / Auth Action -->
-          <div class="user-block">
-            <div class="gemini-badge">
+          <!-- Gemini/User Block -->
+          <div class="user-block-v2">
+            <div class="gemini-btn" :class="platform">
               <span class="material-symbols-outlined">bolt</span>
-              <span>Gemini AI</span>
+              GEMINI AI
             </div>
-            
-            <div v-if="isAuthenticated" class="profile-area" :class="{ 'is-open': isDropdownOpen }">
-              <div class="avatar-trigger" @click="toggleDropdown">
-                <div class="avatar">
-                  <img :src="avatarUrl" alt="Avatar">
-                </div>
-                <span class="material-symbols-outlined expand-icon">expand_more</span>
+
+            <div v-if="isAuthenticated" class="profile-area-v2" :class="{ 'is-open': isDropdownOpen }">
+              <div class="avatar-trigger-v2" @click="toggleDropdown">
+                <img :src="avatarUrl" alt="Avatar" class="avatar-v2">
+                <span class="material-symbols-outlined text-lg opacity-40">expand_more</span>
               </div>
 
               <div v-if="isDropdownOpen" class="dropdown-content glass-card" @click.stop>
@@ -164,13 +185,13 @@ function setPlatform(p) {
             </button>
           </div>
         </div>
-      </div>
-    </header>
+      </header>
 
-    <!-- Main Content -->
-    <main class="page-container">
-      <slot></slot>
-    </main>
+      <!-- Main Content -->
+      <main class="page-container-v2">
+        <slot></slot>
+      </main>
+    </div>
   </div>
 </template>
 
@@ -178,227 +199,133 @@ function setPlatform(p) {
 .main-layout {
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
+  background: #000;
+  color: #fff;
   position: relative;
-  z-index: 1;
+  overflow: hidden;
 }
 
-.app-header {
-  height: 64px;
-  background: rgba(10, 10, 12, 0.6);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  position: sticky;
+/* SIDEBAR NAVIGATION */
+.side-navigation {
+  width: 260px;
+  height: 100vh;
+  background: #0a0a0b;
+  border-right: 1px solid rgba(255,255,255,0.03);
+  display: flex;
+  flex-direction: column;
+  padding: 32px 20px;
+  position: fixed;
+  left: 0;
   top: 0;
   z-index: 100;
+  transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.header-inner {
-  max-width: 1440px;
-  margin: 0 auto;
-  height: 100%;
-  padding: 0 32px;
+.logo-v2 { display: flex; align-items: center; gap: 14px; margin-bottom: 60px; padding-left: 12px; }
+.logo-circle { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+.logo-circle.tiktok { background: linear-gradient(135deg, #a14bff, #ff3f6c); }
+.logo-circle.youtube { background: linear-gradient(135deg, #ff0000, #b30000); }
+.logo-text-v2 { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.04em; }
+
+.sidebar-links { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.sidebar-link {
+  display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-radius: 12px;
+  color: #64748b; text-decoration: none; font-weight: 600; font-size: 0.95rem; transition: 0.2s;
+}
+.sidebar-link:hover { background: rgba(255,255,255,0.03); color: #fff; }
+.sidebar-link.router-link-active { background: rgba(255,255,255,0.05); color: #fff; font-weight: 700; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+.side-navigation.tiktok .sidebar-link.router-link-active { border-right: 3px solid #a14bff; }
+.side-navigation.youtube .sidebar-link.router-link-active { border-right: 3px solid #ff0000; }
+.sidebar-link .material-symbols-outlined { font-size: 22px; }
+
+.sidebar-footer { margin-top: auto; padding: 20px 12px; border-top: 1px solid rgba(255,255,255,0.03); }
+.platform-mini-pill {
+  padding: 8px 12px; border-radius: 8px; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em;
+  background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.4); text-align: center;
+}
+.platform-mini-pill.tiktok { color: #e5b4ff; border: 1px solid rgba(161, 75, 255, 0.1); }
+.platform-mini-pill.youtube { color: #ff0000; border: 1px solid rgba(255, 0, 0, 0.1); }
+
+/* CONTENT WRAPPER */
+.content-wrapper {
+  flex: 1;
+  margin-left: 260px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: relative;
+}
+
+.app-header-v2 {
+  height: 80px;
+  padding: 0 40px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end; /* Push to right */
+  position: sticky;
+  top: 0;
+  z-index: 90;
 }
 
-.left-section, .right-section {
-  display: flex;
-  align-items: center;
-  gap: 32px;
+.header-right-controls { display: flex; align-items: center; gap: 40px; }
+
+.platform-switcher-v2 {
+  display: flex; background: #0a0a0b; padding: 4px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.05);
 }
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.switch-btn-v2 {
+  padding: 8px 20px; border-radius: 999px; border: none; font-size: 0.75rem; font-weight: 700;
+  display: flex; align-items: center; gap: 8px; cursor: pointer; background: transparent; color: #64748b; transition: 0.3s;
 }
+.switch-btn-v2.active.tiktok { background: #fff; color: #000; box-shadow: 0 4px 15px rgba(161, 75, 255, 0.2); }
+.switch-btn-v2.active.youtube { background: #ff0000; color: #fff; box-shadow: 0 4px 15px rgba(255, 0, 0, 0.2); }
 
-.logo-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
+.user-block-v2 { display: flex; align-items: center; gap: 24px; }
+.gemini-btn {
+  display: flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 12px;
+  background: #121214; border: 1px solid rgba(255,255,255,0.05); color: #fff;
+  font-size: 0.75rem; font-weight: 800; cursor: pointer; transition: 0.3s;
 }
+.gemini-btn:hover { background: #1c1c1f; border-color: rgba(255,255,255,0.1); }
+.gemini-btn .material-symbols-outlined { font-size: 18px; color: #a14bff; }
+.theme-youtube .gemini-btn .material-symbols-outlined { color: #ff0000; }
 
-.logo-icon.tiktok { background: linear-gradient(135deg, #a14bff, #ff3f6c); }
-.logo-icon.youtube { background: linear-gradient(135deg, #ff0000, #b30000); }
-
-.logo-text { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }
-.platform-label { font-size: 0.65rem; color: rgba(255, 255, 255, 0.3); font-weight: 700; margin-left: -4px; border-left: 1px solid rgba(255, 255, 255, 0.1); padding-left: 8px; }
-
-.desktop-nav {
-  display: flex;
-  gap: 24px;
+.profile-area-v2 { position: relative; }
+.avatar-trigger-v2 {
+  display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 4px; border-radius: 12px; transition: 0.2s;
 }
-
-.desktop-nav a {
-  color: #94a3b8;
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.desktop-nav a:hover, .desktop-nav a.router-link-active { color: #fff; }
-
-.platform-switcher {
-  display: flex;
-  background: #121214;
-  padding: 4px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.switch-btn {
-  padding: 6px 16px;
-  border-radius: 999px;
-  border: none;
-  font-size: 0.75rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  background: transparent;
-  color: #64748b;
-  transition: all 0.2s;
-}
-
-.switch-btn:hover { color: #fff; }
-
-.switch-btn.active.tiktok { background: #a14bff; color: #fff; }
-.switch-btn.active.youtube { background: #ff0000; color: #fff; }
-
-.user-block {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.gemini-badge {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: rgba(161, 75, 255, 0.1);
-  border: 1px solid rgba(161, 75, 255, 0.2);
-  border-radius: 8px;
-  color: #a14bff;
-  font-size: 0.65rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.theme-youtube .gemini-badge { background: rgba(255, 0, 0, 0.1); border-color: rgba(255, 0, 0, 0.2); color: #ff0000; }
-
-.avatar-trigger {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px;
-  padding-right: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-.avatar-trigger:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.1); }
-.is-open .avatar-trigger { background: rgba(255, 255, 255, 0.1); border-color: var(--tiktok-primary); }
-.theme-youtube .is-open .avatar-trigger { border-color: var(--youtube-primary); }
-
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  overflow: hidden;
-  border: 2px solid rgba(161, 75, 255, 0.2);
-}
-
-.theme-youtube .avatar { border-color: rgba(255, 0, 0, 0.2); }
-
-.expand-icon { font-size: 18px; color: rgba(255, 255, 255, 0.3); transition: transform 0.3s; }
-.is-open .expand-icon { transform: rotate(180deg); color: #fff; }
-
-.profile-area { position: relative; }
+.avatar-trigger-v2:hover { background: rgba(255,255,255,0.05); }
+.avatar-v2 { width: 36px; height: 36px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.1); }
 
 .dropdown-content {
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
-  width: 200px;
-  padding: 16px;
-  z-index: 1000;
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: absolute; top: calc(100% + 12px); right: 0; width: 220px; padding: 20px;
+  background: #121214; border: 1px solid rgba(255,255,255,0.05); border-radius: 16px;
+  z-index: 1000; opacity: 0; transform: translateY(10px); pointer-events: none;
+  transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); backdrop-filter: blur(20px);
 }
 .is-open .dropdown-content { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
-.page-container {
-  flex: 1;
-  max-width: 1440px;
-  margin: 0 auto;
-  width: 100%;
-  padding: 32px;
+.page-container-v2 { flex: 1; padding: 0 40px 40px; }
+
+.user-info { display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px; margin-bottom: 16px; }
+.name { font-weight: 700; font-size: 1rem; color: #fff; }
+.address { font-size: 0.75rem; color: rgba(255,255,255,0.3); font-family: monospace; }
+
+.logout-btn {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px;
+  border: none; background: transparent; color: #ef4444; font-weight: 700; font-size: 0.9rem;
+  cursor: pointer; border-radius: 10px; transition: 0.2s;
 }
+.logout-btn:hover { background: rgba(239, 68, 68, 0.05); }
 
-.icon-btn.download { background: var(--tiktok-primary); border: none; }
-.theme-youtube .icon-btn.download { background: var(--youtube-primary); }
-
-.header-login-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: none;
-  background: var(--tiktok-primary);
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.2s, filter 0.2s;
-}
-
-.theme-youtube .header-login-btn { background: var(--youtube-primary); }
-.header-login-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
-.header-login-btn:disabled { opacity: 0.7; cursor: not-allowed; }
-
+/* SPIN ANIMATION */
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
-.user-info { display: flex; flex-direction: column; gap: 2px; max-width: 120px; }
-.user-info .name { font-size: 0.85rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.user-info .address { font-size: 0.7rem; color: rgba(255, 255, 255, 0.4); font-family: monospace; }
-
-.name-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.edit-btn { background: transparent; border: none; color: rgba(255, 255, 255, 0.4); cursor: pointer; padding: 2px; border-radius: 4px; display: flex; align-items: center; }
-.edit-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
-.edit-btn .material-symbols-outlined { font-size: 14px; }
-
-.edit-name-group { display: flex; flex-direction: column; gap: 8px; }
-.edit-input { background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 0.8rem; width: 100%; outline: none; }
-.edit-input:focus { border-color: var(--tiktok-primary); }
-.edit-actions { display: flex; gap: 4px; justify-content: flex-end; }
-.edit-actions button { background: transparent; border: none; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; }
-.save-btn { color: #10b981; }
-.cancel-btn { color: #ef4444; }
-.edit-actions button:hover { background: rgba(255, 255, 255, 0.1); }
-.edit-actions .material-symbols-outlined { font-size: 16px; }
-
-.divider { height: 1px; background: rgba(255, 255, 255, 0.05); margin: 12px 0; }
-.logout-btn { 
-  width: 100%; display: flex; align-items: center; gap: 8px; 
-  padding: 8px; border: none; background: transparent; 
-  color: #ef4444; font-size: 0.85rem; font-weight: 600; cursor: pointer; 
-  border-radius: 8px; transition: background 0.2s;
+.header-login-btn {
+  padding: 10px 24px; border-radius: 999px; border: none; font-weight: 800; font-size: 0.85rem;
+  background: #fff; color: #000; cursor: pointer; transition: 0.3s;
 }
-.logout-btn:hover { background: rgba(239, 68, 68, 0.1); }
+.header-login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(255,255,255,0.15); }
+.header-login-btn.tiktok { background: #a14bff; color: #fff; }
+.header-login-btn.youtube { background: #ff0000; color: #fff; }
 </style>

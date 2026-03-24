@@ -70,6 +70,7 @@ type VideoInfo struct {
 // IVideoWorkflow defines the interface for orchestrating video generation
 type IVideoWorkflow interface {
 	StartGeneration(jobID string, req GenerateRequest)
+	CancelJob(jobID string) bool
 }
 
 // IScriptGenerator defines the interface for generating scripts using AI
@@ -84,7 +85,7 @@ type IScriptGenerator interface {
 // IAudioService defines the interface for audio generation and processing
 type IAudioService interface {
 	GenerateAudioChunks(chunks []string, voice string, speed float64, jobID string, maxConcurrent int) ([]string, error)
-	GenerateSingleAudio(text, voice string, speed float64, jobID string, index int) (string, error)
+	GenerateSingleAudio(text, voice, provider string, speed float64, jobID string, index int) (string, error)
 	MergeAudioFiles(audioPaths []string, outputPath string) error
 }
 
@@ -123,6 +124,8 @@ type JobService interface {
 	CreateSeriesPartJob(ctx context.Context, userID, seriesID string, partIndex int, platform, contentName, topic, voice, ttsProvider string) (*model.Job, error)
 	GetActiveTask(ctx context.Context, userID, platform string) (*model.Job, *model.Series, error)
 	UpdateJobTitle(ctx context.Context, jobID, title string) error
+	SaveCheckpoint(ctx context.Context, jobID string, checkpoint *model.JobCheckpoint) error
+	GetCheckpoint(ctx context.Context, jobID string) (*model.JobCheckpoint, error)
 }
 
 // VideoService handles video gallery and explore features

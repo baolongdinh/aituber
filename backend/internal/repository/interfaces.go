@@ -25,6 +25,7 @@ type JobRepository interface {
 	UpdateOutput(ctx context.Context, id, videoPath, savedPath, thumbnailPath string) error
 	UpdateError(ctx context.Context, id, errMsg string) error
 	UpdateTitle(ctx context.Context, id, title string) error
+	UpdateCheckpoint(ctx context.Context, id string, data []byte) error
 }
 
 // SeriesRepository defines the contract for series data access

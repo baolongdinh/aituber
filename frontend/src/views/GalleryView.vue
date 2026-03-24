@@ -158,8 +158,36 @@ onMounted(() => {
 
 .btn { 
   display: inline-block; margin-top: 24px; padding: 12px 24px; 
-  background: var(--tiktok-primary); color: #fff; border-radius: 10px; 
+  background: #fff; color: #000; border-radius: 10px; 
   font-weight: 700; text-decoration: none; 
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+
+/* Platform-specific button colors */
+.theme-tiktok .btn {
+  background: linear-gradient(135deg, #a14bff 0%, #ff0050 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(161, 75, 255, 0.3);
+}
+
+.theme-youtube .btn {
+  background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(255, 0, 0, 0.3);
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+}
+
+.theme-tiktok .btn:hover {
+  box-shadow: 0 6px 16px rgba(161, 75, 255, 0.5);
+}
+
+.theme-youtube .btn:hover {
+  box-shadow: 0 6px 16px rgba(255, 0, 0, 0.5);
 }
 
 @keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 0.3; } 100% { opacity: 0.6; } }

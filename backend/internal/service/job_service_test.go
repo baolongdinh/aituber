@@ -59,6 +59,11 @@ func (m *MockJobRepository) UpdateTitle(ctx context.Context, id, title string) e
 	return args.Error(0)
 }
 
+func (m *MockJobRepository) UpdateCheckpoint(ctx context.Context, id string, data []byte) error {
+	args := m.Called(ctx, id, data)
+	return args.Error(0)
+}
+
 type MockSeriesRepository struct {
 	mock.Mock
 }

@@ -3,7 +3,9 @@ package service
 import (
 	"aituber/internal/model"
 	"aituber/internal/repository"
+	"aituber/utils"
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 )
@@ -110,6 +112,9 @@ func (s *jobServiceImpl) MarkCompleted(ctx context.Context, jobID, videoPath, sa
 		return fmt.Errorf("failed to get job: %w", err)
 	}
 
+	// Extract duration
+	duration, _ := utils.GetVideoDuration(videoPath)
+
 	// Create Video record
 	video := &model.Video{
 		UserID:       job.UserID,
@@ -119,7 +124,7 @@ func (s *jobServiceImpl) MarkCompleted(ctx context.Context, jobID, videoPath, sa
 		ContentType:  job.Type,
 		FilePath:     savedPath,
 		ThumbnailURL: thumbnailPath,
-		DurationSec:  0, // TODO: Extract duration
+		DurationSec:  int(duration),
 	}
 	if err := s.videoRepo.Create(ctx, video); err != nil {
 		return fmt.Errorf("failed to create video record: %w", err)
@@ -209,4 +214,27 @@ func (s *jobServiceImpl) GetActiveTask(ctx context.Context, userID, platform str
 }
 func (s *jobServiceImpl) UpdateJobTitle(ctx context.Context, jobID, title string) error {
 	return s.jobRepo.UpdateTitle(ctx, jobID, title)
+}
+
+func (s *jobServiceImpl) SaveCheckpoint(ctx context.Context, jobID string, checkpoint *model.JobCheckpoint) error {
+	data, err := json.Marshal(checkpoint)
+	if err != nil {
+		return fmt.Errorf("failed to marshal checkpoint: %w", err)
+	}
+	return s.jobRepo.UpdateCheckpoint(ctx, jobID, data)
+}
+
+func (s *jobServiceImpl) GetCheckpoint(ctx context.Context, jobID string) (*model.JobCheckpoint, error) {
+	job, err := s.jobRepo.FindByID(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if job == nil || len(job.CheckpointData) == 0 {
+		return nil, nil
+	}
+	var checkpoint model.JobCheckpoint
+	if err := json.Unmarshal(job.CheckpointData, &checkpoint); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal checkpoint: %w", err)
+	}
+	return &checkpoint, nil
 }

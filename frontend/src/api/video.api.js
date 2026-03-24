@@ -10,9 +10,11 @@ export const videoApi = {
     generateSeries: (data) => api.post('/series/generate', data),
     getSeriesStatus: (seriesId) => api.get(`/series/status/${seriesId}`),
 
-    // Gallery & Explore
+    // Gallery, Explore & Tasks
     getGallery: (params) => api.get('/me/videos', { params }),
     getExplore: (params) => api.get('/explore', { params }),
-    togglePublic: (id) => api.post(`/videos/${id}/publish`),
+    getTasks: (params) => api.get('/me/tasks', { params }),
+    resumeTask: (jobId) => api.post(`/status/${jobId}/resume`),
+    cancelTask: (jobId) => api.delete(`/status/${jobId}`),
     getActiveTask: () => api.get('/me/active-task')
 }
