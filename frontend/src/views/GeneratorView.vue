@@ -586,7 +586,7 @@ onUnmounted(() => {
   display: grid;
   grid-template-columns: 1fr 480px;
   gap: 80px;
-  padding: 60px 80px 60px 100px; /* Increased left margin */
+  padding: 60px 80px 60px 40px; /* Reduced left padding since MainLayout handles spacing */
   max-width: 1600px;
   margin: 0 auto;
 }

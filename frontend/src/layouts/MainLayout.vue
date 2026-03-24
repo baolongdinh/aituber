@@ -304,7 +304,10 @@ function setPlatform(p) {
 }
 .is-open .dropdown-content { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
-.page-container-v2 { flex: 1; padding: 0 40px 40px; }
+.page-container-v2 { 
+  flex: 1; 
+  padding: 0 60px 40px 60px; /* Increased left padding for better spacing from sidebar */
+}
 
 .user-info { display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 16px; margin-bottom: 16px; }
 .name { font-weight: 700; font-size: 1rem; color: #fff; }
