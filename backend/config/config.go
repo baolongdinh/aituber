@@ -42,6 +42,7 @@ type Config struct {
 	LocalHubURL      string
 	RemoteHubURL     string
 	RemoteHubToken   string
+	BaseURL          string // Base URL for voice files
 
 	// Processing Settings
 	MaxTextLength        int
@@ -101,6 +102,7 @@ func LoadConfig() (*Config, error) {
 		LocalHubURL:      getEnv("LOCAL_HUB_URL", "http://localhost:5000"),
 		RemoteHubURL:     getEnv("REMOTE_HUB_URL", "http://10.0.0.224:8081"),
 		RemoteHubToken:   getEnv("REMOTE_HUB_TOKEN", ""),
+		BaseURL:          getEnv("BASE_URL", "http://localhost:8080"),
 
 		// Processing settings
 		MaxTextLength:        getEnvAsInt("MAX_TEXT_LENGTH", 50000),

@@ -132,7 +132,7 @@ type MockAudioService struct {
 func (m *MockAudioService) GenerateAudioChunks(chunks []string, voice string, speed float64, jobID string, maxConcurrent int) ([]string, error) {
 	return m.AudioPaths, m.Err
 }
-func (m *MockAudioService) GenerateSingleAudio(text, voice string, speed float64, jobID string, index int) (string, error) {
+func (m *MockAudioService) GenerateSingleAudio(text, voice, provider string, speed float64, jobID string, index int) (string, error) {
 	if index < len(m.AudioPaths) {
 		return m.AudioPaths[index], m.Err
 	}

@@ -88,6 +88,7 @@ func main() {
 		cfg.AudioCrossfadeDuration,
 		cfg.RemoteHubURL,
 		cfg.RemoteHubToken,
+		cfg.BaseURL,
 	)
 	videoProcessor := service.NewVideoProcessor(
 		videoPool,

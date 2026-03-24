@@ -23,20 +23,31 @@ type AudioService struct {
 	httpClient        *http.Client
 	tempDir           string
 	audioBitrate      string
-	sampleRate        int
-	crossfadeDuration float64
-	rateLimiter       <-chan time.Time
-	ttsCachePath      string // Path to TTS URL cache JSON file
+	audioSampleRate   int
+	audioCrossfade    float64
+	cachePath         string
+	ttsURLCache       map[string]string
+	cacheMutex        sync.RWMutex
 	voiceCatalog      *VoiceCatalog
 	remoteHubURL      string
 	remoteHubToken    string
+	baseURL           string           // Base URL for voice files
+	ttsCachePath      string           // Path to TTS cache file
+	rateLimiter       <-chan time.Time // Rate limiter for FPT API
+	crossfadeDuration float64          // Crossfade duration for audio merging
 }
 
 // NewAudioService creates a new audio service
-func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir string, audioBitrate string, sampleRate int, crossfadeDuration float64, remoteHubURL, remoteHubToken string) *AudioService {
+func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir string, audioBitrate string, sampleRate int, crossfadeDuration float64, remoteHubURL, remoteHubToken, baseURL string) *AudioService {
 	limiter := time.Tick(5000 * time.Millisecond)
 
 	cachePath := filepath.Join(tempDir, "tts_url_cache.json")
+	ttsCachePath := cachePath
+
+	// Default baseURL to localhost:8080 if not provided
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
 
 	return &AudioService{
 		apiPool:          apiPool,
@@ -46,13 +57,17 @@ func NewAudioService(apiPool *utils.APIKeyPool, elevenLabsKey string, tempDir st
 		},
 		tempDir:           tempDir,
 		audioBitrate:      audioBitrate,
-		sampleRate:        sampleRate,
-		crossfadeDuration: crossfadeDuration,
-		rateLimiter:       limiter,
-		ttsCachePath:      cachePath,
+		audioSampleRate:   sampleRate,
+		audioCrossfade:    crossfadeDuration,
+		cachePath:         cachePath,
+		ttsURLCache:       make(map[string]string),
 		voiceCatalog:      NewVoiceCatalog(),
 		remoteHubURL:      remoteHubURL,
 		remoteHubToken:    remoteHubToken,
+		baseURL:           baseURL,
+		ttsCachePath:      ttsCachePath,
+		rateLimiter:       limiter,
+		crossfadeDuration: crossfadeDuration,
 	}
 }
 
@@ -168,9 +183,12 @@ func (as *AudioService) GenerateAudioChunks(chunks []string, voice string, speed
 
 // GenerateSingleAudio generates a single audio chunk with provider support
 func (as *AudioService) GenerateSingleAudio(text, voice, provider string, speed float64, jobID string, index int) (string, error) {
+
+	fmt.Println("provider", provider)
+
 	// Default to FPT if provider not specified
 	if provider == "" {
-		provider = "fpt"
+		provider = "hub"
 	}
 
 	// Validate provider
@@ -377,11 +395,17 @@ func (as *AudioService) generateSingleAudioHub(text, voice string, speed float64
 		return "", err
 	}
 
-	// Get ref audio URL (using localhost as base, will be accessible from container)
-	refAudioURL, err := as.voiceCatalog.GetRefAudioURL("http://localhost:8080", voice)
+	if as.baseURL == "" {
+		as.baseURL = "http://10.0.0.166:8080"
+	}
+
+	// Get ref audio URL (using configurable base URL)
+	refAudioURL, err := as.voiceCatalog.GetRefAudioURL(as.baseURL, voice)
 	if err != nil {
 		return "", fmt.Errorf("failed to get ref audio URL: %w", err)
 	}
+
+	fmt.Println("refAudioURL", refAudioURL)
 
 	cacheKey := ttsCacheKey("hub", text, voice, speed, refAudioURL)
 
@@ -399,10 +423,10 @@ func (as *AudioService) generateSingleAudioHub(text, voice string, speed float64
 	}
 
 	// --- HUB TTS FLOW ---
-	maxRetries := 3
+	maxRetries := 20
 	var lastErr error
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for attempt := range maxRetries {
 		if attempt > 0 {
 			log.Printf("[Chunk %d] Retrying Hub TTS (Attempt %d/%d)", index, attempt+1, maxRetries)
 		}
@@ -438,7 +462,14 @@ func (as *AudioService) generateSingleAudioHub(text, voice string, speed float64
 
 // callHubTTS calls Hub TTS API and returns the audio URL
 func (as *AudioService) callHubTTS(text, refAudioURL string) (string, error) {
+
+	fmt.Println("hub call", text)
+
 	url := fmt.Sprintf("%s/api/v1/generate/tts", as.remoteHubURL)
+
+	if refAudioURL == "" {
+		refAudioURL = "default"
+	}
 
 	payload := HubTTSRequest{
 		Text:        text,

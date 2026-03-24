@@ -13,6 +13,9 @@ const { isGenerating, progress, currentStep, seriesParts, error, generate, check
 const { isAuthenticated } = storeToRefs(useAuthStore())
 const { login } = useAuth()
 
+const selectedTask = ref(null)
+const isTaskDetailOpen = ref(false)
+
 const tasks = ref([])
 const isLoadingHistory = ref(true)
 const isVoiceDropdownOpen = ref(false)
@@ -52,54 +55,30 @@ const groupedTasks = computed(() => {
 
   tasks.value.forEach(task => {
     if (task.series_id) {
-      if (!seriesMap.has(task.series_id)) {
-        const group = {
-          id: task.series_id,
-          type: 'series',
-          platform: task.platform,
-          topic: task.topic,
-          content_name: task.content_name?.split('-part-')[0] || task.topic,
-          created_at: task.created_at,
-          status: 'processing',
-          progress: 0,
-          current_step: '',
-          jobs: []
-        }
-        seriesMap.set(task.series_id, group)
-        groups.push(group)
-      }
-      const group = seriesMap.get(task.series_id)
-      group.jobs.push(task)
+      // Extract base content name without the part number
+      const baseContentName = task.content_name?.split(' - Tập ')[0] || task.topic
+      const partTitle = `${baseContentName} - Tập ${task.part_index + 1}`
+      groups.push({
+        id: task.id,
+        type: 'series_part',
+        platform: task.platform,
+        topic: task.topic,
+        content_name: partTitle,
+        created_at: task.created_at,
+        status: task.status,
+        progress: task.progress || 0,
+        current_step: task.current_step,
+        job: task,
+        series_id: task.series_id,
+        part_index: task.part_index
+      })
     } else {
       groups.push({ id: task.id, type: 'single', job: task, created_at: task.created_at })
     }
   })
 
-  groups.forEach(g => {
-    if (g.type === 'series') {
-      const jobs = g.jobs
-      const allCompleted = jobs.every(j => j.status === 'completed')
-      const anyProcessing = jobs.some(j => j.status === 'processing')
-      const anyFailed = jobs.some(j => j.status === 'failed')
-      
-      if (allCompleted) g.status = 'completed'
-      else if (anyProcessing) g.status = 'processing'
-      else if (anyFailed) g.status = 'failed'
-      else g.status = 'queued'
-
-      const totalProgress = jobs.reduce((acc, j) => acc + (j.progress || 0), 0)
-      g.progress = Math.floor(totalProgress / jobs.length)
-      
-      const activeJob = jobs.find(j => j.status === 'processing')
-      if (activeJob) {
-        g.current_step = `Tập ${activeJob.part_index + 1}: ${activeJob.current_step}`
-      } else if (allCompleted) {
-        g.current_step = 'Hoàn thành tất cả các tập'
-      } else {
-        g.current_step = 'Đang chờ...'
-      }
-    }
-  });
+  // Sort by creation time (newest first)
+  groups.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
 
   return groups
 })
@@ -107,7 +86,7 @@ const groupedTasks = computed(() => {
 async function fetchTasks() {
   if (!isAuthenticated.value) return
   try {
-    const res = await videoApi.getTasks({ limit: 10, platform: platform.value })
+    const res = await videoApi.getTasks({ limit: 50, platform: platform.value })
     tasks.value = res.data.data
   } catch (e) {
     console.error('Failed to fetch history', e)
@@ -211,6 +190,72 @@ function scrollToHistory() {
 watch(platform, () => {
   fetchTasks()
 })
+
+function showTaskDetails(task) {
+  selectedTask.value = task
+  isTaskDetailOpen.value = true
+}
+
+function togglePartDetails(partIndex) {
+  if (selectedTask.value?.expandedPart === partIndex) {
+    selectedTask.value.expandedPart = null
+  } else {
+    selectedTask.value.expandedPart = partIndex
+  }
+}
+
+// Helper functions to determine step status
+function isStepCompleted(task, step) {
+  if (task.status === 'completed') return true
+  if (task.status === 'failed') return false
+  
+  const progress = task.progress || 0
+  const currentStep = task.current_step || ''
+  
+  switch (step) {
+    case 'script':
+      return progress >= 25 || currentStep.toLowerCase().includes('script')
+    case 'audio':
+      return progress >= 50 || currentStep.toLowerCase().includes('audio') || currentStep.toLowerCase().includes('tts')
+    case 'video':
+      return progress >= 75 || currentStep.toLowerCase().includes('video') || currentStep.toLowerCase().includes('generating')
+    case 'final':
+      return task.status === 'completed'
+    default:
+      return false
+  }
+}
+
+function isStepCurrent(task, step) {
+  if (task.status !== 'processing') return false
+  
+  const progress = task.progress || 0
+  const currentStep = task.current_step || ''
+  
+  switch (step) {
+    case 'script':
+      return progress < 25 && currentStep.toLowerCase().includes('script')
+    case 'audio':
+      return progress >= 25 && progress < 50 && (currentStep.toLowerCase().includes('audio') || currentStep.toLowerCase().includes('tts'))
+    case 'video':
+      return progress >= 50 && progress < 75 && (currentStep.toLowerCase().includes('video') || currentStep.toLowerCase().includes('generating'))
+    case 'final':
+      return progress >= 75 && task.status === 'processing'
+    default:
+      return false
+  }
+}
+
+function getStepStatus(task, step) {
+  if (isStepCompleted(task, step)) return 'Hoàn thành'
+  if (isStepCurrent(task, step)) return 'Đang xử lý...'
+  return 'Chờ xử lý'
+}
+
+function closeTaskDetails() {
+  isTaskDetailOpen.value = false
+  selectedTask.value = null
+}
 
 function handleOutsideClick(e) {
   if (isVoiceDropdownOpen.value && !e.target.closest('.custom-dropdown-container')) {
@@ -446,7 +491,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Mini logs for multi-part jobs -->
-            <div class="mini-jobs-log">
+            <div v-if="seriesParts.length > 0" class="mini-jobs-log">
                <div v-for="(part, idx) in seriesParts" :key="idx" class="job-row-refined">
                   <div class="flex items-center gap-3">
                     <div class="dot" :class="part.status"></div>
@@ -481,12 +526,12 @@ onUnmounted(() => {
           </div>
 
           <div v-else class="history-stack-v3">
-            <div v-for="group in groupedTasks" :key="group.id" class="history-card-v3" :class="[group.status, { 'is-series': group.type === 'series' }]">
+            <div v-for="group in groupedTasks" :key="group.id" class="history-card-v3" :class="[group.status, { 'is-series': group.type === 'series_part' }]" @click="showTaskDetails(group)">
                <div class="flex items-center gap-5">
                  <div class="status-indicator" :class="group.status"></div>
                  <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1">
-                      <span v-if="group.type === 'series'" class="tag-series">SERIES</span>
+                      <span v-if="group.type === 'series_part'" class="tag-series">TẬP {{ group.part_index + 1 }}</span>
                       <h4 class="history-title-v3 truncate">{{ group.content_name || group.topic }}</h4>
                     </div>
                     <div class="history-meta-v3">
@@ -496,9 +541,14 @@ onUnmounted(() => {
                       <span class="dot"></span>
                       <span class="uppercase">{{ group.platform }}</span>
                     </div>
+                    <!-- Progress bar for processing tasks -->
+                    <div v-if="group.status === 'processing' && group.progress > 0" class="task-progress-bar">
+                      <div class="progress-fill" :style="{ width: group.progress + '%' }"></div>
+                      <span class="progress-text">{{ group.progress }}%</span>
+                    </div>
                  </div>
                  <div class="history-actions-v3">
-                    <router-link v-if="group.status === 'completed'" :to="group.type === 'series' ? '/series/' + group.id : '/job/' + group.id" class="action-btn-v3">
+                    <router-link v-if="group.status === 'completed'" :to="group.type === 'series_part' ? '/job/' + group.id : '/job/' + group.id" class="action-btn-v3" @click.stop>
                       <span class="material-symbols-outlined">chevron_right</span>
                     </router-link>
                  </div>
@@ -508,6 +558,121 @@ onUnmounted(() => {
         </div>
       </main>
     </div>
+
+    <!-- Task Detail Modal -->
+    <Transition name="modal-fade">
+      <div v-if="isTaskDetailOpen && selectedTask" class="modal-overlay" @click="closeTaskDetails">
+        <div class="modal-container" @click.stop>
+          <div class="modal-header">
+            <h3 class="modal-title">Chi tiết Task</h3>
+            <button @click="closeTaskDetails" class="modal-close-btn">
+              <span class="material-symbols-outlined">close</span>
+            </button>
+          </div>
+          
+          <div class="modal-content">
+            <!-- Task Info -->
+            <div class="task-info-grid">
+              <div class="info-item">
+                <span class="info-label">Tên task</span>
+                <span class="info-value">{{ selectedTask.content_name || selectedTask.topic }}</span>
+              </div>
+              
+              <div class="info-item">
+                <span class="info-label">Trạng thái</span>
+                <span class="info-value status-badge" :class="selectedTask.status">
+                  {{ selectedTask.status.toUpperCase() }}
+                </span>
+              </div>
+              
+              <div class="info-item">
+                <span class="info-label">Tiến độ</span>
+                <div class="progress-container">
+                  <div class="progress-bar">
+                    <div class="progress-fill" :style="{ width: (selectedTask.progress || 0) + '%' }"></div>
+                  </div>
+                  <span class="progress-percentage">{{ selectedTask.progress || 0 }}%</span>
+                </div>
+              </div>
+              
+              <div class="info-item">
+                <span class="info-label">Bước hiện tại</span>
+                <span class="info-value">{{ selectedTask.current_step || 'Đang chờ...' }}</span>
+              </div>
+              
+              <div class="info-item">
+                <span class="info-label">Platform</span>
+                <span class="info-value platform-badge" :class="selectedTask.platform">
+                  {{ selectedTask.platform.toUpperCase() }}
+                </span>
+              </div>
+              
+              <div class="info-item">
+                <span class="info-label">Thời gian tạo</span>
+                <span class="info-value">{{ new Date(selectedTask.created_at).toLocaleString('vi-VN') }}</span>
+              </div>
+              
+              <div v-if="selectedTask.type === 'series_part'" class="info-item">
+                <span class="info-label">Phần</span>
+                <span class="info-value">Tập {{ selectedTask.part_index + 1 }}</span>
+              </div>
+            </div>
+
+            <!-- Task Steps -->
+            <div class="task-steps-section">
+              <h4 class="steps-title">Chi tiết các bước</h4>
+              <div class="task-steps-list">
+                <div class="task-step-item" :class="{ 'completed': isStepCompleted(selectedTask, 'script'), 'current': isStepCurrent(selectedTask, 'script') }">
+                  <div class="step-indicator">
+                    <span class="material-symbols-outlined">description</span>
+                  </div>
+                  <div class="step-content">
+                    <span class="step-name">Tạo kịch bản</span>
+                    <span class="step-status">{{ getStepStatus(selectedTask, 'script') }}</span>
+                  </div>
+                </div>
+
+                <div class="task-step-item" :class="{ 'completed': isStepCompleted(selectedTask, 'audio'), 'current': isStepCurrent(selectedTask, 'audio') }">
+                  <div class="step-indicator">
+                    <span class="material-symbols-outlined">mic</span>
+                  </div>
+                  <div class="step-content">
+                    <span class="step-name">Tạo audio</span>
+                    <span class="step-status">{{ getStepStatus(selectedTask, 'audio') }}</span>
+                  </div>
+                </div>
+
+                <div class="task-step-item" :class="{ 'completed': isStepCompleted(selectedTask, 'video'), 'current': isStepCurrent(selectedTask, 'video') }">
+                  <div class="step-indicator">
+                    <span class="material-symbols-outlined">movie</span>
+                  </div>
+                  <div class="step-content">
+                    <span class="step-name">Tạo video</span>
+                    <span class="step-status">{{ getStepStatus(selectedTask, 'video') }}</span>
+                  </div>
+                </div>
+
+                <div class="task-step-item" :class="{ 'completed': isStepCompleted(selectedTask, 'final'), 'current': isStepCurrent(selectedTask, 'final') }">
+                  <div class="step-indicator">
+                    <span class="material-symbols-outlined">check_circle</span>
+                  </div>
+                  <div class="step-content">
+                    <span class="step-name">Hoàn thành</span>
+                    <span class="step-status">{{ getStepStatus(selectedTask, 'final') }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="modal-footer">
+            <button @click="closeTaskDetails" class="modal-btn modal-btn-primary">
+              Đóng
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -600,16 +765,16 @@ onUnmounted(() => {
 .platform-chip.tiktok { color: #a14bff; }
 .platform-chip.youtube { color: #ff0000; }
 .page-title { font-size: 3.5rem; font-weight: 800; letter-spacing: -0.04em; margin-bottom: 8px; }
-.page-subtitle { color: rgba(255, 255, 255, 0.568); font-size: 1.1rem; }
+.page-subtitle { color: rgba(255,255,255,0.6); font-size: 1.1rem; }
 
 /* FORM REFINEMENT */
 .generator-form-refined { display: flex; flex-direction: column; gap: 40px; }
 .form-group-lux { display: flex; flex-direction: column; gap: 14px; }
 .label-industrial {
-  font-size: 0.65rem; font-weight: 800; color: rgba(255, 255, 255, 0.466); letter-spacing: 0.15em;
+  font-size: 0.65rem; font-weight: 800; color: rgba(255,255,255,0.35); letter-spacing: 0.15em;
   display: flex; align-items: center; gap: 10px;
 }
-.label-industrial span { opacity: 0.8; font-family: 'JetBrains Mono', monospace; }
+.label-industrial span { opacity: 0.7; font-family: 'JetBrains Mono', monospace; }
 
 .textarea-refined {
   background: #0d0d0e; border: 1px solid rgba(255,255,255,0.05); border-radius: 20px;
@@ -639,7 +804,7 @@ onUnmounted(() => {
   padding: 16px 20px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255,255,255,0.7);
   font-size: 0.85rem;
   font-weight: 600;
   border-radius: 12px;
@@ -690,7 +855,7 @@ onUnmounted(() => {
 
 .provider-count {
   font-size: 0.7rem;
-  opacity: 0.9;
+  opacity: 0.8;
   font-weight: 500;
 }
 
@@ -753,7 +918,7 @@ onUnmounted(() => {
 .batch-label {
   font-size: 0.7rem;
   font-weight: 800;
-  color: rgba(255,255,255,0.6);
+  color: rgba(255,255,255,0.5);
   letter-spacing: 0.1em;
 }
 
@@ -777,16 +942,16 @@ onUnmounted(() => {
   transition: all 0.3s ease;
 }
 
-.indicator-dot:nth-child(1) { background: rgba(255,255,255,0.8); }
-.indicator-dot:nth-child(2) { background: rgba(255,255,255,0.7); }
-.indicator-dot:nth-child(3) { background: rgba(255,255,255,0.6); }
-.indicator-dot:nth-child(4) { background: rgba(255,255,255,0.5); }
-.indicator-dot:nth-child(5) { background: rgba(255,255,255,0.4); }
+.indicator-dot:nth-child(1) { background: rgba(255,255,255,0.7); }
+.indicator-dot:nth-child(2) { background: rgba(255,255,255,0.6); }
+.indicator-dot:nth-child(3) { background: rgba(255,255,255,0.5); }
+.indicator-dot:nth-child(4) { background: rgba(255,255,255,0.4); }
+.indicator-dot:nth-child(5) { background: rgba(255,255,255,0.3); }
 
 .indicator-more {
   font-size: 0.6rem;
   font-weight: 600;
-  color: rgba(255,255,255,0.5);
+  color: rgba(255,255,255,0.4);
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -912,21 +1077,34 @@ onUnmounted(() => {
 
 /* HISTORY STACK */
 .section-label-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding: 0 4px; }
-.section-label-header h3 { font-size: 0.75rem; font-weight: 800; opacity: 0.5; letter-spacing: 0.1em; }
-.btn-icon-refined { background: transparent; border: none; color: #fff; opacity: 0.4; cursor: pointer; transition: 0.3s; }
+.section-label-header h3 { font-size: 0.75rem; font-weight: 800; opacity: 0.4; letter-spacing: 0.1em; }
+.btn-icon-refined { background: transparent; border: none; color: #fff; opacity: 0.3; cursor: pointer; transition: 0.3s; }
 .btn-icon-refined:hover { opacity: 1; transform: rotate(180deg); }
 
 .history-card-v3 {
   padding: 20px 24px; background: #0d0d0e; border-radius: 20px; border: 1px solid rgba(255,255,255,0.03);
-  margin-bottom: 12px; transition: 0.3s;
+  margin-bottom: 12px; transition: 0.3s; cursor: pointer;
 }
-.history-card-v3:hover { border-color: rgba(255,255,255,0.1); background: #131315; }
+.history-card-v3:hover { border-color: rgba(255,255,255,0.1); background: #131315; transform: translateY(-2px); }
 .status-indicator { width: 4px; height: 24px; border-radius: 10px; background: rgba(255,255,255,0.1); }
 .status-indicator.completed { background: #10b981; }
 .status-indicator.processing { background: #3b82f6; animation: soft-pulse 2s infinite; }
 
+/* Task progress bar */
+.task-progress-bar {
+  position: relative; margin-top: 8px; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px;
+  overflow: hidden;
+}
+.task-progress-bar .progress-fill {
+  height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); transition: width 0.3s ease;
+}
+.task-progress-bar .progress-text {
+  position: absolute; right: 0; top: -20px; font-size: 0.6rem; color: rgba(255,255,255,0.6);
+  font-weight: 600;
+}
+
 .history-title-v3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
-.history-meta-v3 { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; opacity: 0.5; font-weight: 600; }
+.history-meta-v3 { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; opacity: 0.4; font-weight: 600; }
 .history-meta-v3 .dot { width: 2px; height: 2px; background: currentColor; border-radius: 50%; opacity: 0.5; }
 
 .action-btn-v3 {
@@ -935,10 +1113,418 @@ onUnmounted(() => {
 }
 .action-btn-v3:hover { background: #fff; color: #000; border-color: #fff; }
 
-.tag-series { font-size: 0.6rem; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; opacity: 0.6; }
+.tag-series { font-size: 0.6rem; font-weight: 800; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius: 4px; opacity: 0.5; }
 
 @keyframes soft-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+  background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 20px;
+}
+
+.modal-container {
+  background: #1a1a1b; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1);
+  max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+
+.modal-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 24px 24px 20px; border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.modal-title {
+  font-size: 1.5rem; font-weight: 700; margin: 0;
+}
+
+.modal-close-btn {
+  background: transparent; border: none; color: rgba(255,255,255,0.6);
+  cursor: pointer; padding: 8px; border-radius: 8px; transition: 0.2s;
+}
+.modal-close-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+.modal-content {
+  padding: 24px;
+}
+
+.task-info-grid {
+  display: grid; gap: 20px;
+}
+
+.info-item {
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+.info-label {
+  font-size: 0.85rem; font-weight: 600; color: rgba(255,255,255,0.6);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+
+.info-value {
+  font-size: 1rem; font-weight: 500; color: #fff;
+}
+
+/* Task Steps Section */
+.task-steps-section {
+  margin-top: 32px; padding-top: 24px; border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.steps-title {
+  font-size: 1.1rem; font-weight: 700; margin: 0 0 20px 0; color: #fff;
+}
+
+.task-steps-list {
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.task-step-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);
+  transition: 0.2s;
+}
+
+.task-step-item.completed {
+  background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2);
+}
+
+.task-step-item.current {
+  background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+}
+
+.step-indicator {
+  width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.task-step-item.completed .step-indicator {
+  background: rgba(16, 185, 129, 0.2); color: #10b981;
+}
+
+.task-step-item.current .step-indicator {
+  background: rgba(59, 130, 246, 0.2); color: #3b82f6;
+  animation: pulse-step 2s infinite;
+}
+
+.step-content {
+  flex: 1; display: flex; justify-content: space-between; align-items: center;
+}
+
+.step-name {
+  font-weight: 600; color: #fff; font-size: 0.9rem;
+}
+
+.step-status {
+  font-size: 0.75rem; color: rgba(255,255,255,0.6); font-weight: 500;
+}
+
+.task-step-item.completed .step-status {
+  color: #10b981;
+}
+
+.task-step-item.current .step-status {
+  color: #3b82f6; font-weight: 600;
+}
+
+@keyframes pulse-step {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.status-badge {
+  display: inline-block; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem;
+  font-weight: 700; text-transform: uppercase;
+}
+.status-badge.processing { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+.status-badge.completed { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.status-badge.failed { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.status-badge.queued { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
+
+.platform-badge {
+  display: inline-block; padding: 6px 12px; border-radius: 8px; font-size: 0.85rem;
+  font-weight: 700; text-transform: uppercase;
+}
+.platform-badge.tiktok { background: rgba(161, 75, 255, 0.2); color: #a14bff; }
+.platform-badge.youtube { background: rgba(255, 0, 0, 0.2); color: #ff0000; }
+
+.progress-container {
+  display: flex; align-items: center; gap: 12px;
+}
+
+.progress-bar {
+  flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  transition: width 0.3s ease;
+}
+
+.progress-percentage {
+  font-size: 0.9rem; font-weight: 600; color: #fff; min-width: 45px;
+  text-align: right;
+}
+
+/* Series Tasks Styles */
+.series-tasks-container {
+  display: flex; flex-direction: column; gap: 24px;
+}
+
+.series-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+.series-title {
+  font-size: 1.2rem; font-weight: 700; margin: 0; color: #fff;
+}
+
+.series-info {
+  font-size: 0.85rem; color: rgba(255,255,255,0.6); font-weight: 600;
+}
+
+.tasks-list {
+  display: flex; flex-direction: column; gap: 12px;
+  max-height: 400px; overflow-y: auto;
+  padding-right: 8px;
+}
+
+.tasks-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.tasks-list::-webkit-scrollbar-track {
+  background: rgba(255,255,255,0.05); border-radius: 3px;
+}
+
+.tasks-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.2); border-radius: 3px;
+}
+
+.task-item {
+  padding: 16px; background: rgba(255,255,255,0.03); border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05); transition: 0.2s;
+}
+
+.task-item:hover {
+  background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1);
+}
+
+.task-item.is-current {
+  background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+}
+
+.task-item.is-completed {
+  background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2);
+}
+
+.task-item.is-failed {
+  background: rgba(239, 68, 68, 0.05); border-color: rgba(239, 68, 68, 0.2);
+}
+
+.task-item-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+}
+
+.task-item-header.clickable {
+  cursor: pointer; padding: 4px; margin: -4px; border-radius: 8px;
+  transition: 0.2s;
+}
+
+.task-item-header.clickable:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.task-part-info {
+  display: flex; align-items: center; gap: 12px;
+}
+
+.part-number {
+  font-weight: 700; font-size: 0.95rem; color: #fff;
+}
+
+.task-status {
+  font-size: 0.7rem; font-weight: 700; padding: 4px 8px; border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.task-status.processing { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+.task-status.completed { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.task-status.failed { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.task-status.queued { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8); }
+
+.task-progress-mini {
+  display: flex; align-items: center; gap: 8px;
+}
+
+.progress-percent {
+  font-size: 0.85rem; font-weight: 600; color: rgba(255,255,255,0.8);
+}
+
+.expand-icon {
+  font-size: 1.2rem; color: rgba(255,255,255,0.6); transition: transform 0.2s;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.task-step-info {
+  margin-bottom: 8px;
+}
+
+.step-text {
+  font-size: 0.8rem; color: rgba(255,255,255,0.7); font-style: italic;
+}
+
+.task-item .task-progress-bar {
+  height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px;
+  overflow: hidden; margin: 0;
+}
+
+.task-item .progress-fill {
+  height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+  transition: width 0.3s ease;
+}
+
+/* Task Details Expanded */
+.task-details-expanded {
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.task-steps-list {
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.task-step-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px;
+  background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);
+  transition: 0.2s;
+}
+
+.task-step-item.completed {
+  background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.2);
+}
+
+.task-step-item.current {
+  background: rgba(59, 130, 246, 0.1); border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+}
+
+.step-indicator {
+  width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.1);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.task-step-item.completed .step-indicator {
+  background: rgba(16, 185, 129, 0.2); color: #10b981;
+}
+
+.task-step-item.current .step-indicator {
+  background: rgba(59, 130, 246, 0.2); color: #3b82f6;
+  animation: pulse-step 2s infinite;
+}
+
+.step-content {
+  flex: 1; display: flex; justify-content: space-between; align-items: center;
+}
+
+.step-name {
+  font-weight: 600; color: #fff; font-size: 0.9rem;
+}
+
+.step-status {
+  font-size: 0.75rem; color: rgba(255,255,255,0.6); font-weight: 500;
+}
+
+.task-step-item.completed .step-status {
+  color: #10b981;
+}
+
+.task-step-item.current .step-status {
+  color: #3b82f6; font-weight: 600;
+}
+
+@keyframes pulse-step {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Task details transition */
+.task-details-enter-active, .task-details-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.task-details-enter-from, .task-details-leave-to {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.task-details-enter-to, .task-details-leave-from {
+  max-height: 500px;
+  opacity: 1;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.series-summary {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+  padding: 16px; background: rgba(255,255,255,0.03); border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.summary-item {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  text-align: center;
+}
+
+.summary-item span:first-child {
+  font-size: 0.75rem; color: rgba(255,255,255,0.6); font-weight: 600;
+  text-transform: uppercase;
+}
+
+.summary-item span:last-child {
+  font-size: 1.1rem; color: #fff; font-weight: 700;
+}
+
+.modal-footer {
+  padding: 20px 24px 24px; border-top: 1px solid rgba(255,255,255,0.05);
+  display: flex; justify-content: flex-end;
+}
+
+.modal-btn {
+  padding: 12px 24px; border: none; border-radius: 12px; font-weight: 600;
+  cursor: pointer; transition: 0.2s; font-size: 0.95rem;
+}
+
+.modal-btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: #fff;
+}
+.modal-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(59, 130, 246, 0.4); }
+
+/* Modal transitions */
+.modal-fade-enter-active, .modal-fade-leave-active {
+  transition: all 0.3s ease;
+}
+.modal-fade-enter-from, .modal-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.9);
+}
+.modal-fade-enter-to, .modal-fade-leave-from {
+  opacity: 1;
+  transform: scale(1);
+}
 
 /* Transitions */
 .onyx-fade-enter-active, .onyx-fade-leave-active { transition: 0.2s; }
